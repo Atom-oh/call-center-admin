@@ -16,6 +16,7 @@
 - 운영팀이 **저신뢰 건**을 검수하여 정답 라벨을 누적할 수 있어야 한다.
 - 분석팀이 분류 결과를 **트렌드·집계·드릴다운**으로 볼 수 있어야 한다.
 - 정확도를 속도보다 우선한다.
+- **분류기는 모델 교체 가능한(pluggable) 설계**로 한다 — v1은 LLM(Bedrock) 호출, 데이터가 충분히 축적되면 자체 ML 모델(파인튜닝 인코더, LoRA-튜닝 LLM, 분류기)로 무중단 교체·혼용 가능해야 한다. 자세한 조건·임계점은 §3.7 참조.
 
 ### 1.2 범위 외 (Non-goals)
 - STT 변환 자체는 외부에서 이미 수행되어 S3에 업로드된다고 가정한다.
@@ -23,10 +24,18 @@
 - 실시간(수 초 이내) 응답은 요구 없음. 비동기 처리 OK.
 
 ### 1.3 성공 기준
+
+**Phase 1 (v1, LLM only)**:
 - 운영 시작 1개월 후 HITL 교정률 < 15% (자동 분류 정확도 ≥ 85%, 평가셋 누적 시점에 측정 가능)
 - Step Functions 실패율 < 0.5%
 - 일 처리량 1만 건까지 안정 동작
 - PII(계좌·카드·주민·휴대폰) `reason` 필드 누설률 0%
+
+**Phase 3 (자동 학습 파이프라인)**:
+- HITL 라벨 누적 500건 도달 시점에 첫 대분류 fine-tuned 모델 카나리 배포
+- 자동 재학습 파이프라인 일 1회 실행, 실패율 < 5%
+- 모델 회귀 게이트 통과율 ≥ 70% (정상 학습 결과 비율)
+- ML 캐스케이드 적용 시 LLM 호출 비용 ≥ 50% 절감 (정확도 -3%p 이내 유지)
 
 ---
 
@@ -40,13 +49,14 @@
 | 트리거 | EventBridge → Step Functions Express | S3 PutObject 1건 = SFN 실행 1회 |
 | 오케스트레이션 | AWS Step Functions (Express) | 단계 분기·재시도·DLQ 시각 관리 |
 | 처리 | Lambda × 4 + 분기 상태 | PII 가드 / 분류 / 검증 / 적재 |
-| 모델 | Bedrock (ap-northeast-2) | Opus 4.7 (primary), Sonnet 4.6 (verify) |
+| **분류 추론 (pluggable)** | **Inference Adapter — LLM 또는 ML 모델** | v1: Bedrock Opus 4.7 / Sonnet 4.6 (ap-northeast-2). v2+ 옵션: 자체 호스팅 LLM(Qwen on SageMaker), 인코더 파인튜닝(KoBERT/KLUE-BERT), LoRA 튜닝 Qwen, XGBoost on embeddings 등. classify·verify Lambda는 어댑터 인터페이스만 호출하므로 모델 교체 시 SFN 정의·DDB 스키마 변경 0건. |
 | 운영 데이터 | DynamoDB `consult-results` + GSI ×3 | 단건 조회, HITL 큐 |
 | 분석 데이터 | S3 `consult-results-parquet` + Glue + Athena | BI 데이터 소스 |
 | BI | QuickSight | 분석팀 트렌드/집계 |
 | HITL UI | Streamlit on Fargate + Cognito | 운영팀 검수 |
 | IaC | Terraform (workspace 분리) | dev/stg/prd |
 | 알림 | CloudWatch Alarms → SNS → Slack Webhook | 단일 채널 |
+| **MLOps (v2+)** | **SageMaker Pipelines + Model Registry + Endpoint + Model Monitor** | **자동 재학습·평가·블루/그린 배포 (§3.8)** |
 
 ### 2.2 데이터 흐름 (v1 — Phase 1)
 
@@ -228,8 +238,264 @@ R5 (PII 인용 금지): 출력의 reason / alternativesConsidered 필드에는 �
 
 - **초기 골든셋**: 손 라벨링한 50~100건을 `tests/golden/`에 저장. CI에서 PR마다 자동 평가.
 - **HITL 누적 → gold-set 승격**: 운영 중 HITL 교정 결과가 1천 건 누적되면 평가셋으로 자동 승격 (Athena 쿼리 + S3 export 스크립트)
-- **버저닝**: 프롬프트는 `src/prompts/v{N}.{M}/` 디렉토리로 관리. 모든 DDB record에 `promptVersion` 기록.
+- **버저닝**: 프롬프트는 `src/prompts/v{N}.{M}/` 디렉토리로 관리. 모든 DDB record에 `promptVersion` 기록. (자체 ML 모델 도입 시 `modelVersion` 필드도 동일 방식)
 - **회귀 게이트**: CI에서 대/중/소 정확도가 직전 main 대비 -2%p 떨어지면 fail.
+
+### 3.7 모델 선택 전략 — LLM ↔ ML 데이터 임계점
+
+본 시스템은 **분류기를 모델 교체 가능한 어댑터로 추상화**한다. classify·verify Lambda는 `InferenceAdapter` 인터페이스만 호출하고, 어댑터 구현체가 LLM API 호출이든 SageMaker 엔드포인트 호출이든 무관하게 동일 출력 스키마(§3.3)를 반환한다.
+
+#### 3.7.1 어댑터 인터페이스
+
+```python
+class InferenceAdapter(Protocol):
+    name: str            # "bedrock-opus-4-7", "kobert-finetuned-v3", "qwen-lora-v2", ...
+    version: str         # 어댑터 버전 — DDB의 modelPath/promptVersion에 기록
+    def classify(self, masked_transcript: str) -> ClassificationResult: ...
+```
+
+이 추상화 덕분에 **어떤 LLM이든, 어떤 ML 모델이든** 다음 중 무엇이든 plug-in 가능:
+
+| 카테고리 | 어댑터 예시 | 사용 시점 |
+|----------|-----------|-----------|
+| Hosted LLM | Bedrock Opus 4.7 / Sonnet 4.6 / Haiku 4.5 (v1 기본) | 라벨 데이터 0~수백 건 단계 |
+| Self-hosted LLM | Qwen2.5-7B/14B on SageMaker (vLLM) | 외부 송신 차단 / 비용 최적 / 한국어 강화 필요 시 |
+| 인코더 분류기 | KLUE-BERT, KoELECTRA, KoBERT를 fine-tune | 라벨 누적 충분 + 대/중분류 라우팅용 |
+| LoRA 튜닝 LLM | Qwen2.5-7B + LoRA adapter | 인코더보다 정확도 추가 확보, 자원 적당 |
+| 트리 기반 분류기 | XGBoost on 임베딩 (Cohere/Titan) | 빠른 baseline, 해석 가능성 중시 |
+| 캐스케이드(추천) | ML이 confident하면 ML 채택, 아니면 LLM fallback | 비용·정확도 동시 최적 |
+
+#### 3.7.2 데이터 임계점 (대략적 가이드)
+
+| 접근 방식 | 클래스당 최소 라벨 수 | 213 노드 환산 (소분류까지) | 도입 가능 시점 |
+|----------|-----------------------|--------------------------|----------------|
+| **LLM zero-shot** (v1) | **0** (description만) | 0건 + 평가용 50~100건 | 즉시 — v1 |
+| LLM few-shot in-context | 5~20 | 1K~4K (대표 샘플) | HITL 누적 1~3개월 |
+| **LoRA 튜닝 LLM** | **50~200** | **10K~40K** | HITL 누적 6~12개월 |
+| **인코더 fine-tune (KoBERT 등)** | **100~500** | **20K~100K** | HITL 누적 12개월+ |
+| XGBoost on embeddings | 100~300 | 20K~60K | 위와 동일, 빠른 baseline용 |
+
+> **핵심**: ML 모델로 LLM을 대체하려면 **소분류(131 클래스) 기준으로 최소 2만 건, 권장 10만 건 라벨이 필요**. 대분류만 ML로 대체하면 1.8K~9K로 충분하므로 **대분류 ML + 중/소 LLM** 캐스케이드가 가장 현실적인 첫 ML 도입 경로.
+
+#### 3.7.3 ML 도입 단계적 경로
+
+1. **v1 (현재)**: LLM only. HITL 라벨 누적.
+2. **v1.5 (HITL 누적 ~2K)**: few-shot 예시를 프롬프트에 동적 주입 (RAG). 비용 큰 변화 없이 정확도 추가 확보.
+3. **v2 (HITL 누적 ~2만, 대분류 위주)**: 대분류 전용 KLUE-BERT 또는 KoELECTRA fine-tune → SageMaker Real-time Endpoint. classify Lambda가 ML 어댑터 먼저 호출, confidence ≥ 0.9이면 채택, 아니면 LLM 폴백. 비용 절감 효과 큼.
+4. **v3 (HITL 누적 ~10만)**: 중/소분류까지 fine-tuned ML 모델 (LoRA-Qwen 또는 다단계 인코더 분류기). LLM은 verify/롱테일·신규 카테고리 전용.
+
+이 경로는 모두 §2.1의 어댑터 추상화 덕분에 **classify Lambda 코드 변경 없이** 어댑터 교체만으로 진입 가능.
+
+#### 3.7.4 데이터 수집 가속 전략
+
+ML 도입을 앞당기려면 라벨 데이터 누적 속도를 끌어올려야 한다:
+
+- **샘플링률 상향**: 일 50건 무작위 HITL 샘플 → 일 200~500건으로 (운영팀 부담과 균형)
+- **Active learning**: confidence가 낮거나 verify 단계에서 Opus/Sonnet이 불일치한 건을 우선 HITL 큐로
+- **다중 LLM 합의 → pseudo-label**: Opus + Sonnet + Haiku 3개 모델 합의 시 자동 gold-set 승격 (사람 검수 없이도 누적)
+- **상담원 자가 라벨링 UI**: 통화 종료 후 상담원이 직접 분류 입력하면 즉시 gold-set화
+
+#### 3.7.5 합성 데이터 증강 fine-tuning 전략
+
+Phase 3 진입 전 라벨 부족을 합성으로 보강. **HITL 누적 ~500건 시점에 대분류(18 클래스) fine-tuning을 시도 가능**한 규모.
+
+**필요 데이터 (대분류 fine-tuning 1차, 총 ~5.7K)**:
+
+| 출처 | 건수 | 역할 |
+|------|------|------|
+| Real HITL 라벨 | 200~500 | **실제 분포 anchor** (가장 중요) |
+| LLM 합성 (Opus, 카테고리별 시드 기반) | ~3,500 | 분포 채우기. 다중 LLM 합의 필터 통과분만 채택 |
+| LLM paraphrase (real × 10배) | ~2,000 | 실제 분포 weighting 강화 |
+| **Held-out 평가셋 (real STT only)** | 100 | **학습 불가**, 검증 전용 |
+
+**가장 큰 함정 — 분포 시프트**:
+
+LLM이 만든 합성 대화는 실제 STT와 길이·어휘·턴 수·노이즈 모두 다르다. 합성에서 95% 정확도가 real에서 70~75%로 추락하는 함정이 빈번. 따라서:
+- 검증셋은 **반드시 real STT 샘플**로만 구성
+- 합성 데이터에 STT 노이즈 패턴(필러 "어/음", 띄어쓰기 오류, 동음이의 오인식) 인공 삽입
+- 카테고리별 시드 = description + real 샘플 2~3건 (real 분포 학습)
+- 다중 LLM 합의 필터: Opus 생성 → Sonnet 분류 → 라벨 일치 ~70%만 채택
+
+**모델 / 학습 환경**:
+- **KLUE-BERT** (RoBERTa Korean) base 또는 **KoELECTRA** — 한국어 NLP 표준, 작음
+- SageMaker Training Job, ML.g5.xlarge (spot 인스턴스), 3~5 에폭, ~30분~1시간
+- 평가: real held-out 100건에서 대분류 정확도
+
+**예상 결과 (보수적)**:
+- ML 단독 대분류: 75~85% (real 평가셋)
+- LLM zero-shot (Opus): 88~92%
+- **캐스케이드 (ML conf ≥ 0.9이면 ML, 아니면 LLM)**: ~88% 정확도, LLM 호출 60% 절감
+
+**캐스케이드 비용·정확도 (일 1만 건)**:
+
+| 시나리오 | ML 처리율 | LLM 호출 | 정확도 | 비용 |
+|----------|----------|---------|--------|------|
+| LLM only (현재 v1) | 0% | 100% | ~90% | ~$25 |
+| ML only (합성 fine-tune) | 100% | 0% | ~80% | ~$2 |
+| **캐스케이드 (권장)** | ~65% | 35% | ~88% | ~$10 |
+
+→ 비용 60% 절감, 정확도 -2%p 손실. real 라벨 누적될수록 ML 정확도 ↑ → 격차 축소.
+
+### 3.8 MLOps — 자동 학습 파이프라인 (Continuous Learning)
+
+운영팀·분석가·도메인 전문가가 HITL UI에서 라벨을 교정하면 **다음날 새벽에 모델이 자동으로 재학습되고 평가 게이트를 통과하면 카나리 배포까지 자동 진행**되는 폐쇄 루프. 데이터 누적이 즉시 모델 개선으로 이어지는 짧은 피드백 사이클을 보장한다.
+
+#### 3.8.1 핵심 원칙
+
+- **사람이 가르치면 다음날부터 모델이 알게 된다** — 24h 이내 사이클
+- **평가 게이트 통과한 모델만 자동 승격** — 회귀 절대 방지
+- **감사 가능** — 모든 학습 데이터/모델/평가 결과 S3에 스냅샷 보존
+- **수동 개입 최소화** — prod 100% 승격만 사람 클릭 1회
+
+#### 3.8.2 전체 흐름
+
+```mermaid
+flowchart TB
+  EB[EventBridge cron<br/>매일 02:00 KST] --> SP[SageMaker Pipeline]
+
+  subgraph SP[SageMaker Pipeline]
+    direction TB
+    S1[1. 데이터 수집<br/>Athena CTAS, 누적 gold + 최근 7일 HITL] --> S2
+    S2[2. 데이터 검증 Lambda<br/>최소량 · 분포 · 신규 클래스 체크] --> S3
+    S3[3. 전처리 Processing<br/>토크나이즈, train/val split, 스냅샷 S3 저장] --> S4
+    S4[4. Training Job<br/>KLUE-BERT incremental fine-tune ~30분] --> S5
+    S5[5. 평가 Processing<br/>real held-out golden set] --> S6
+    S6{prod 대비 회귀?<br/>-1%p 이상}
+    S6 -- yes --> SA[학습 차단<br/>+ Slack 알림 + 로그 첨부]
+    S6 -- no --> S7[6. Model Registry 등록]
+    S7 --> S8{+0.5%p 향상?}
+    S8 -- yes --> S9[7. stg endpoint 자동 배포<br/>+ 카나리 10% 트래픽 24h]
+    S8 -- no --> SB[Registry에만 등록, 보류]
+    S9 --> S10[8. 카나리 모니터링<br/>confidence·교정률·예외율]
+    S10 --> S11{이상 감지?}
+    S11 -- yes --> SC[자동 롤백 + Slack]
+    S11 -- no --> SD[Slack: prod 승격 승인 링크]
+    SD --> S12[9. 사람 승인 1클릭 → prod 100%]
+  end
+
+  DDB[(DynamoDB<br/>status=hitl-corrected)] --> S1
+  GOLD[S3 prompt-evals/gold-set/] --> S1
+```
+
+#### 3.8.3 구성 요소
+
+| 영역 | 컴포넌트 | 역할 |
+|------|----------|------|
+| 스케줄러 | EventBridge cron (`cron(0 17 * * ? *)` UTC = 02:00 KST) | 매일 트리거 |
+| 오케스트레이션 | SageMaker Pipelines | 학습→평가→등록→배포 단계 그래프 |
+| 데이터 추출 | Glue Catalog + Athena CTAS | 최근 7일 sliding window 학습셋 stage |
+| 데이터 검증 | Lambda + Great Expectations 또는 Deequ | 최소량/분포/스키마 게이트 |
+| 학습 | SageMaker Training Job (G5.xlarge spot) | KLUE-BERT incremental fine-tune ~30분 |
+| 모델 저장소 | SageMaker Model Registry | 버전 관리, lineage tracking, A/B compare |
+| 평가 | SageMaker Processing Job | held-out golden set 정확도/F1, 클래스별 성능 |
+| 배포 | SageMaker Endpoint Production Variants | 블루/그린, 카나리 10%→100% |
+| 모니터링 | SageMaker Model Monitor + CloudWatch | drift, confidence 분포, 예외율 |
+| 알림 | SNS → Slack | 학습 결과 / 회귀 차단 / 카나리 시작·완료 / 승인 요청 |
+
+#### 3.8.4 데이터 수집 SQL
+
+```sql
+-- Athena CTAS, 매일 02:00 KST 새 학습 데이터 stage
+CREATE TABLE training_set_${date} WITH (
+    format = 'PARQUET',
+    external_location = 's3://kakaopay-callcenter-ml/training-sets/date=${date}/'
+) AS
+SELECT
+  pii_masked_text_ref AS text_s3_uri,
+  category_대code AS label_대,
+  category_중code AS label_중,
+  category_소code AS label_소,
+  'hitl' AS source
+FROM consult_results
+WHERE status = 'hitl-corrected'
+  AND corrected_at >= CURRENT_DATE - INTERVAL '7' DAY
+UNION ALL
+SELECT
+  text_s3_uri,
+  label_대, label_중, label_소,
+  'gold' AS source
+FROM prompt_evals.gold_set
+WHERE prompt_version IS NOT NULL;
+```
+
+#### 3.8.5 데이터 검증 게이트 (재학습 트리거 조건)
+
+| 조건 | 기준 | 위반 시 |
+|------|------|---------|
+| 신규 라벨 최소량 | 지난 7d 새 HITL 교정 ≥ 50건 | 학습 스킵, 누적 대기 |
+| 클래스 커버리지 | 대분류 18개 중 최소 15개 등장 | 경고만, 학습 진행 |
+| 분포 skew | 한 클래스 > 50% 점유 | 클래스 가중치 자동 조정 |
+| 신규 클래스 발견 | description에 없는 새 코드 등장 | 학습 차단, 분석팀 알림 |
+| 평균 confidence 급락 | 전일 대비 -10%p | 즉시 알림 + 학습 진행 (drift 감지용) |
+
+#### 3.8.6 자동 승격 게이트
+
+1. **회귀 방지**: 새 모델 vs prod 모델 정확도 → -1%p 이상 → 차단
+2. **개선 기준**: +0.5%p 이상 향상 → stg 자동 배포 + 카나리 10% 24h
+3. **카나리 모니터링** (24h): confidence Δ, HITL 교정률, 예외율
+4. **prod 승격**: 카나리 정상 + 메트릭 유지 → **Slack 승인 링크 1클릭** → prod 100%
+5. **자동 롤백**: 카나리에서 confidence -5%p 또는 예외율 +200% 감지 시 즉시 이전 버전 복원
+
+#### 3.8.7 분석가/도메인 전문가 인터페이스 (Streamlit HITL UI 확장)
+
+기존 검수 UI에 다음 페이지 추가:
+
+- **"오늘의 모델 업데이트"** — 어젯밤 학습 결과 요약 (정확도 변화, 카테고리별 개선/회귀)
+- **"학습 잠금/해제"** — 검증 중인 라벨이 많을 때 임시 학습 보류
+- **"클래스 가중치 조정"** — 희소 카테고리 우선 학습 가중치
+- **"수동 평가셋 추가"** — UI에서 직접 라벨링 → 즉시 golden set 추가
+- **"승격 승인 대기열"** — 카나리 통과 모델 prod 승격 1-클릭 승인
+
+#### 3.8.8 스토리지 / 보존
+
+```
+s3://kakaopay-callcenter-ml/
+├── training-sets/date=YYYY-MM-DD/*.parquet    # 학습 데이터 스냅샷 (재현성)
+├── models/run=YYYYMMDD-HHMM/                  # weights + config + 메트릭
+├── eval-results/run=YYYYMMDD-HHMM/            # confusion matrix, per-class F1
+└── lineage/                                    # 어떤 데이터로 어떤 모델 학습? lineage graph
+```
+
+- training-sets: 90일 보존 후 Glacier IR
+- models: **영구 보존** (rollback 대비)
+- eval-results: 1년 보존
+
+#### 3.8.9 비용 (Phase 3 가동 시 추가)
+
+| 항목 | 일 비용 |
+|------|---------|
+| Training Job (G5.xlarge spot, 30분) | ~$1 |
+| Processing (전처리+평가) | ~$0.5 |
+| Endpoint (ML.g5.xlarge 24/7, 캐스케이드 추론용) | ~$22 |
+| Athena scan + S3 storage | ~$1.5 |
+| **추가 합계** | **~$25/day** |
+
+→ Phase 1 ($25~40) + Phase 3 ($25) = ~$50~65/day. 단, ML 캐스케이드로 LLM 비용 60% 절감하면 실질 추가 비용은 ~$10/day 수준.
+
+#### 3.8.10 Terraform 모듈 추가
+
+```
+modules/
+└── continuous-learning/
+    ├── schedule.tf       # EventBridge cron
+    ├── pipeline.tf       # SageMaker Pipeline definition
+    ├── training.tf       # Training Job + ECR image + Spot 설정
+    ├── registry.tf       # Model Registry, ModelPackageGroup
+    ├── endpoint.tf       # blue/green Production Variants
+    ├── monitoring.tf     # Model Monitor + CloudWatch alarms
+    └── data-prep.tf      # Glue/Athena, S3 staging
+```
+
+#### 3.8.11 핵심 메트릭 (CloudWatch + QuickSight 통합)
+
+- `model.accuracy.daily` — 매일 평가셋 정확도 (대/중/소 각각)
+- `model.training.duration` — 학습 소요 시간
+- `model.gold-set.size` — 누적 정답 라벨 수 추이
+- `model.canary.confidence_delta` — 카나리 vs prod confidence 차이
+- `model.deployment.count` — 일/주별 자동 승격 횟수
+- `model.classWise.f1` — 카테고리별 F1 score (drift 조기 감지)
+
+분석팀 대시보드(QuickSight)에 새 시트 **"ML 진화"** 추가 — 시간에 따른 정확도 곡선, 카테고리별 학습 효과, 새로 추가된 정답 라벨 수 추이.
 
 ---
 
@@ -519,11 +785,49 @@ Phase 2 진입 시 `modules/pii-svc/` 추가 (SageMaker Async + ECR).
 | W5 | Streamlit HITL UI + Cognito + 권한 매트릭스 |
 | W6 | CloudWatch dashboard + alarms + Slack, E2E smoke, prd 승인 배포 |
 
-### Phase 2 (조건부, +2~3주)
+### Phase 2 — PII 마스킹 자체 호스팅 (조건부, +2~3주)
 
-- SageMaker Async Endpoint + Qwen2.5-7B-Instruct
-- Step Functions에 `pii-mask-svc` 단계 삽입
-- 비용 모니터링 + 정확도 비교
+진입 조건은 §4.3 참조.
+
+- SageMaker Async Endpoint + Qwen2.5-7B-Instruct (vLLM)
+- Step Functions의 PII Guard Lambda를 SageMaker invoke로 교체 (인터페이스 동일)
+- 비용 모니터링 + Phase 1 대비 PII 누설률 비교
+
+### Phase 2.5 — Few-shot RAG 도입 (HITL 누적 ~2K)
+
+- HITL 교정 결과(`prompt-evals/gold-set/`)에서 카테고리별 대표 2~3건을 임베딩 검색으로 동적 추출, 분류 프롬프트에 few-shot으로 주입
+- 비용 큰 변화 없이 정확도 추가 확보
+- InferenceAdapter 인터페이스 유지
+
+### Phase 3 — 자체 ML 모델 + 자동 학습 파이프라인 도입 (HITL 누적 ~500~2K, +4~6주)
+
+§3.7.3 v2 + §3.7.5 합성 증강 + §3.8 MLOps. **진입 임계점이 합성 데이터 증강 덕분에 크게 앞당겨짐** (2만 건 → 500~2K).
+
+진입 조건 (둘 다 만족 시):
+- HITL 누적 real 라벨 ≥ 500건 (대분류 기준 클래스당 약 30건)
+- 비용 또는 LLM 의존도 축소 필요성 인식
+
+산출물:
+- **합성 데이터 증강 데이터셋** (§3.7.5): real 500 + LLM 합성 3.5K + paraphrase 2K = ~6K
+- **대분류 fine-tuned 모델** (KLUE-BERT 또는 KoELECTRA → SageMaker Real-time Endpoint)
+- `InferenceAdapter` 구현체 `kobert-finetuned-v1` 추가
+- classify Lambda에 **캐스케이드 로직**: ML confidence ≥ 0.9이면 ML 채택, 아니면 LLM 폴백
+- **§3.8 자동 학습 파이프라인 완전 구축**:
+  - EventBridge daily cron + SageMaker Pipeline
+  - 데이터 검증 게이트 + 회귀 방지 평가 게이트
+  - 카나리 자동 배포 + Slack 승인 1-클릭 prod 승격
+  - Streamlit UI에 "오늘의 모델 업데이트" / "승격 승인 대기열" 페이지 추가
+- Terraform 모듈 `continuous-learning/` 추가
+
+### Phase 4 — 중·소분류까지 ML 확장 (HITL 누적 ~10만, +6~10주)
+
+§3.7.3 v3 단계. 진입 조건:
+- 소분류 기준 클래스당 라벨 ≥ 100건 (총 약 10만 건 — 1~2년 운영 필요)
+- 비용/정확도 양 측면에서 ML 우위 검증
+
+산출물:
+- 중/소분류 다단계 분류기 또는 LoRA-Qwen
+- LLM은 verify/롱테일/신규 카테고리 전용으로 축소
 
 ---
 
@@ -534,3 +838,7 @@ Phase 2 진입 시 `modules/pii-svc/` 추가 (SageMaker Async + ECR).
 - [ ] Bedrock 서울 리전 쿼터 사전 신청 절차 (Opus 4.7 RPM 60, Sonnet 4.6 RPM 30)
 - [ ] Streamlit on Fargate 인증 흐름 (Cognito Hosted UI vs ALB authenticate-cognito) 최종 결정
 - [ ] 골든셋 50~100건 손 라벨링 담당자 지정 (분석팀 또는 외주)
+- [ ] **Phase 3 진입 임계점 재조정**: 현재 "HITL 500건"으로 잡았으나, 운영 1개월 후 실제 누적 속도와 합성 데이터 효과를 보고 재평가 (200건도 가능할 수 있음)
+- [ ] **합성 데이터 라이선스/저작권**: LLM이 생성한 합성 데이터로 학습한 모델의 상업적 사용 가능성 검토 (Bedrock 약관 확인)
+- [ ] **자동 학습 알림 채널/승인자 지정**: prod 승격 1-클릭 승인을 누가 책임지는지 (분석팀 리드? MLOps 담당?)
+- [ ] **Model Monitor data baseline**: drift 감지를 위한 baseline 통계 수집 시점·방식
