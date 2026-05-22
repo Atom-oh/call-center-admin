@@ -1,0 +1,52 @@
+# Superpowers brainstorming session state
+.superpowers/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+.venv/
+venv/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Terraform
+.terraform/
+.terraform.lock.hcl
+*.tfstate
+*.tfstate.*
+*.tfplan
+.terraformrc
+terraform.rc
+
+# AWS / SAM
+.aws-sam/
+
+# Node (Streamlit/QuickSight tooling 가능성)
+node_modules/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+secrets/
+
+# Logs
+*.log
+logs/
