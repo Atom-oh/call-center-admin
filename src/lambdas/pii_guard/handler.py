@@ -16,6 +16,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 # Lambda 패키징 시 src/lib도 함께 zip. 런타임 zip 루트 = /var/task/, 그 안에 lib/ + lambdas/.
 # TODO(phase2): lib/ 를 Lambda Layer로 분리하고 본 sys.path hack 제거.
@@ -29,7 +30,7 @@ _s3 = boto3.client("s3")
 _MASKED_BUCKET = os.environ["MASKED_BUCKET"]
 
 
-def handler(event: dict, _context) -> dict:
+def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
     raw_bucket = event["rawBucket"]
     raw_key = event["rawKey"]
 
