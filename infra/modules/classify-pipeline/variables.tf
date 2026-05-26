@@ -23,3 +23,11 @@ variable "firehose_name" {
   type    = string
   default = ""
 }
+
+# PR7 (Firehose Parquet ARN — used to scope persist Lambda's firehose:PutRecord
+# permission). Empty string keeps the PR6 broad "*" scope behavior so the module
+# is backwards-compatible when analytics is not yet wired.
+variable "firehose_arn" {
+  type    = string
+  default = ""
+}
