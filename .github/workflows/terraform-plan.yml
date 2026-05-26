@@ -1,0 +1,102 @@
+name: Terraform Plan (PR)
+
+# PR마다 infra/** 변경이 있으면 `terraform plan` 결과를 PR 코멘트로 게시합니다.
+# 본 단계는 production을 절대 건드리지 않고 read-only AWS API만 호출합니다.
+#
+# OIDC 셋업: docs/operations/github-actions-setup.md 참고
+#   - GitHub Identity Provider in AWS account
+#   - IAM role `callcenter-github-actions-tf-plan` with read-only Terraform plan permissions
+#   - Trust policy restricts to this repo + pull_request events
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'infra/**'
+      - '.github/workflows/terraform-plan.yml'
+
+permissions:
+  contents: read
+  pull-requests: write
+  id-token: write
+
+concurrency:
+  group: tf-plan-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+env:
+  AWS_REGION: ap-northeast-2
+
+jobs:
+  plan-dev:
+    name: terraform plan — dev
+    runs-on: call-center-admin-x86
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/callcenter-github-actions-tf-plan
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: '1.9.8'
+
+      - name: terraform init (dev, real backend)
+        working-directory: infra/envs/dev
+        run: terraform init -reconfigure
+
+      - name: terraform plan
+        id: plan
+        working-directory: infra/envs/dev
+        run: |
+          set +e
+          terraform plan -no-color -out=tfplan.binary 2> /tmp/tf-stderr.txt | tee /tmp/tf-plan-raw.txt
+          EXIT=${PIPESTATUS[0]}
+          set -e
+          # Strip ANSI escapes if any leaked through
+          sed -r "s/\x1B\[[0-9;]*[mGK]//g" /tmp/tf-plan-raw.txt > /tmp/tf-plan.txt
+          # Truncate to 60KB (GitHub comment limit is 65536 chars)
+          head -c 60000 /tmp/tf-plan.txt > /tmp/tf-plan-trim.txt
+          if [ "$(wc -c < /tmp/tf-plan.txt)" -gt 60000 ]; then
+            echo "" >> /tmp/tf-plan-trim.txt
+            echo "... (truncated, see workflow logs for full plan)" >> /tmp/tf-plan-trim.txt
+          fi
+          echo "plan_exit=$EXIT" >> "$GITHUB_OUTPUT"
+
+      - name: Post plan to PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PLAN_EXIT: ${{ steps.plan.outputs.plan_exit }}
+        run: |
+          ICON="ℹ️"
+          STATUS="No changes"
+          if [ "$PLAN_EXIT" = "2" ]; then
+            ICON="📋"
+            STATUS="Changes detected"
+          elif [ "$PLAN_EXIT" != "0" ]; then
+            ICON="❌"
+            STATUS="Plan failed"
+          fi
+          {
+            echo "## ${ICON} Terraform Plan — dev (\`${STATUS}\`)"
+            echo ""
+            echo '<details><summary>Show plan output</summary>'
+            echo ""
+            echo '```hcl'
+            cat /tmp/tf-plan-trim.txt
+            echo '```'
+            echo ""
+            echo '</details>'
+            echo ""
+            echo "_Triggered by commit \`${{ github.event.pull_request.head.sha }}\` · workflow: \`.github/workflows/terraform-plan.yml\`_"
+          } > /tmp/comment.md
+          gh pr comment "$PR_NUMBER" --body-file /tmp/comment.md
+
+      - name: Fail job on plan error
+        if: steps.plan.outputs.plan_exit != '0' && steps.plan.outputs.plan_exit != '2'
+        run: |
+          echo "::error::terraform plan failed (exit ${{ steps.plan.outputs.plan_exit }})"
+          exit 1

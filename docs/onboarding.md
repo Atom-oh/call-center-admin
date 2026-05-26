@@ -68,6 +68,28 @@ PR7-10이 미진행 상태. 다음 중 하나를 골라 시작:
 
 각 PR은 plan 파일의 step-by-step 가이드를 그대로 따르면 됨. `superpowers:subagent-driven-development` 스킬 사용 권장.
 
+### Branch / PR 워크플로우
+
+본 저장소는 **main 직접 push 금지**. 모든 변경은:
+
+```bash
+git checkout -b feat/<short-topic>
+# ... 작업 + 테스트 + commit ...
+git push -u origin feat/<short-topic>
+gh pr create --base main --fill   # 또는 GitHub UI
+```
+
+PR 올라가면 자동으로:
+1. **AI Review** (`.github/workflows/pr-review.yml`) — Claude (Bedrock Opus 4.7) 가 CLAUDE.md 룰 기준으로 리뷰 → PR 코멘트
+2. **CI** (`.github/workflows/ci.yml`) — ruff + mypy + pytest + terraform fmt/validate + tfsec
+3. **Terraform Plan** (`.github/workflows/terraform-plan.yml`) — `infra/**` 변경 시 `dev` plan → PR 코멘트
+
+머지 후:
+- **Terraform Apply** (`.github/workflows/terraform-apply.yml`) — `infra/**` 변경 시 `dev` 자동 apply
+- stg/prd 는 GitHub UI 에서 `workflow_dispatch` + environment 보호 룰 reviewer 승인 필요
+
+1회성 OIDC role / GitHub environment 셋업은 `docs/operations/github-actions-setup.md` 참고.
+
 ## 7. AWS access (선택)
 
 dev 환경 apply 권한이 필요한 경우:
