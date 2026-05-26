@@ -1,9 +1,9 @@
 """Bedrock Converse 프롬프트 빌더 + 캐시 브레이크포인트."""
+
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-
 
 PROMPT_VERSION = "v1.0"
 

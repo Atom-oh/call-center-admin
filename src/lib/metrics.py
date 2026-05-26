@@ -34,5 +34,5 @@ def emit(metric_name: str, value: float, unit: str = "Count", **dims: str) -> No
             metric_name: value,
         }
         print(json.dumps(record, ensure_ascii=False), file=sys.stdout, flush=True)
-    except Exception as ex:  # noqa: BLE001 — observability must not raise
+    except Exception as ex:  # observability must never raise — broad except is intentional
         print(f"emit({metric_name}) failed: {ex!r}", file=sys.stderr, flush=True)

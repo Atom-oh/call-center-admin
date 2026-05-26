@@ -1,6 +1,6 @@
 """Persist Lambda: DDB write (and Firehose put if FIREHOSE_NAME set)."""
+
 import sys
-from unittest.mock import MagicMock
 
 import boto3
 import pytest

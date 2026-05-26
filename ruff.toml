@@ -3,4 +3,14 @@ line-length = 100
 
 [lint]
 select = ["E", "F", "I", "B", "UP", "N", "SIM", "RUF"]
-ignore = ["E501"]
+ignore = [
+  "E501", # line length 100자 초과 (특히 한국어 주석에서 자주 발생)
+  # N815 mixedCase class variable — 본 프로젝트는 wire protocol 필드명을 그대로 둔다:
+  #   - output_schema.ClassificationResult.alternativesConsidered (Bedrock JSON 응답 키)
+  #   - persist event payload 의 maskedBucket / maskedKey / piiMaskedTextRef 등
+  # snake_case 로 변환하면 Bedrock JSON 직렬화 시 별도 별칭이 필요해 더 복잡해진다.
+  "N815",
+  # N803 / N806 도 같은 이유 — 함수 인자/지역 변수에 wire protocol 키를 그대로 받는다.
+  "N803",
+  "N806",
+]
