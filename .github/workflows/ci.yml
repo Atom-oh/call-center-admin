@@ -86,6 +86,7 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: '1.9.8'
+          terraform_wrapper: false   # node 의존 제거 — self-hosted 러너 안정성
       - name: terraform fmt -recursive -check
         run: terraform fmt -recursive -check infra/
       - name: tflint

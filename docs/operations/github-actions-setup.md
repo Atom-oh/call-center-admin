@@ -177,13 +177,17 @@ stg / prd 는 `sub` 의 `environment:dev` 를 `environment:stg` / `environment:p
 
 `pr-review.yml` 의 `claude --print --output-format=json` 호출은 `CLAUDE_CODE_USE_BEDROCK=1` 환경변수에 따라 Anthropic API 대신 Bedrock 을 사용한다. **러너 IAM Instance Profile** 만으로도 동작하지만, 워크플로우는 명시적으로 OIDC role (`callcenter-github-actions-pr-review`) 을 assume 하여 호출함. 두 권한 중 하나라도 `bedrock:InvokeModel` 을 가지면 충분.
 
-## 3. GitHub Secrets (organization 또는 repo level)
+## 3. GitHub Variables (organization 또는 repo level)
 
-| Secret | 용도 | 권장 scope |
-|--------|------|-----------|
+| Variable | 용도 | 권장 scope |
+|----------|------|-----------|
 | `AWS_ACCOUNT_ID` | OIDC role ARN 조립용 | repo |
 
+> **Secret 이 아닌 Variable 로 등록** 합니다 (계정 번호는 credential-grade 가 아니며, 워크플로우의 `if:` 조건에서 `vars.AWS_ACCOUNT_ID != ''` 으로 graceful gate 적용을 위해 `vars` context 가 필요). GitHub UI 에서 Settings → Secrets and variables → Actions → **Variables 탭** 에서 추가.
+>
 > 본 셋업은 정적 AWS 키를 사용하지 않는다. 모든 권한은 OIDC role 로만 부여된다.
+>
+> **셋업 전 동작**: 모든 워크플로우 job 에 `if: vars.AWS_ACCOUNT_ID != ''` 가 있어 변수 미설정 시 graceful skip 한다. 셋업 완료 후부터 실제 실행.
 
 > Slack webhook 같은 운영 알림용 secret 은 PR9에서 `secretsmanager` 로 옮기고 GH secret 사용 안 함.
 

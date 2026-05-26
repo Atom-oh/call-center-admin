@@ -12,6 +12,9 @@ on:
 jobs:
   review:
     if: github.event.pull_request.head.repo.full_name == github.repository
+    # Skip when AWS_ACCOUNT_ID variable is unset — workflow gracefully no-ops
+    # until docs/operations/github-actions-setup.md OIDC bootstrap is complete.
+    if: vars.AWS_ACCOUNT_ID != ''
     runs-on: call-center-admin-claude-arm
     concurrency:
       group: pr-review-${{ github.event.pull_request.number }}
@@ -33,7 +36,7 @@ jobs:
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/callcenter-github-actions-pr-review
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/callcenter-github-actions-pr-review
           aws-region: ${{ env.AWS_REGION }}
 
       - name: Verify Claude Code CLI present (pre-installed on runner)
