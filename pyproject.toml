@@ -17,6 +17,7 @@ dev = [
   "ruff>=0.6.0",
   "mypy>=1.11.0",
   "boto3-stubs[bedrock-runtime,dynamodb,s3,sagemaker]>=1.35.0",
+  "types-openpyxl>=3.1",
 ]
 
 [tool.pytest.ini_options]
@@ -27,3 +28,19 @@ addopts = "-ra --strict-markers --cov=src --cov-report=term-missing"
 [tool.mypy]
 strict = true
 python_version = "3.12"
+
+# Bedrock Converse 의 cachePoint 필드는 boto3-stubs 의 SystemContentBlockTypeDef
+# TypedDict 에 아직 포함되지 않아 strict 모드에서 충돌. lib/bedrock_client.py 에서만
+# untyped dict 허용. Bedrock-stubs 가 cachePoint 를 정식 지원하면 제거.
+[[tool.mypy.overrides]]
+module = "lib.bedrock_client"
+disallow_untyped_calls = false
+disallow_subclassing_any = false
+
+# moto + 한국어 attribute name 으로 인한 false-positive 가 많아 unit/integration
+# 테스트는 strict 완화. test 코드는 핸들러의 mock 행동 검증이 목적이지 typed API 가 아님.
+[[tool.mypy.overrides]]
+module = "tests.*"
+disallow_untyped_defs = false
+disallow_untyped_decorators = false
+disallow_untyped_calls = false

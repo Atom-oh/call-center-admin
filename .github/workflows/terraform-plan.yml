@@ -30,18 +30,20 @@ env:
 jobs:
   plan-dev:
     name: terraform plan — dev
+    if: vars.AWS_ACCOUNT_ID != ''
     runs-on: call-center-admin-x86
     steps:
       - uses: actions/checkout@v4
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/callcenter-github-actions-tf-plan
+          role-to-assume: arn:aws:iam::${{ vars.AWS_ACCOUNT_ID }}:role/callcenter-github-actions-tf-plan
           aws-region: ${{ env.AWS_REGION }}
 
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: '1.9.8'
+          terraform_wrapper: false   # node 의존 제거 — self-hosted 러너 안정성
 
       - name: terraform init (dev, real backend)
         working-directory: infra/envs/dev

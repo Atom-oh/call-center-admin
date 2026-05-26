@@ -1,10 +1,9 @@
 """Taxonomy parser and tree serialization tests."""
+
 import json
 from pathlib import Path
 
-import pytest
-
-from lib.taxonomy import TaxonomyNode, parse_xlsx, to_json, to_prompt_text
+from lib.taxonomy import parse_xlsx, to_json, to_prompt_text
 
 
 def test_parse_xlsx_returns_18_top_level_nodes(xlsx_path: Path) -> None:

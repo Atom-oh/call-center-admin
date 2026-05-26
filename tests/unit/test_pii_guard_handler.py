@@ -1,6 +1,6 @@
 """PII Guard Lambda handler test with moto S3 mock."""
+
 import json
-import os
 
 import boto3
 import pytest

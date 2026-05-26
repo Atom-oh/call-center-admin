@@ -1,10 +1,12 @@
 """Step Functions task: read masked transcript, call Bedrock, return classification."""
+
 from __future__ import annotations
 
 import dataclasses
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 # Lambda zip 루트 = /var/task/, 그 안에 lib/ + lambdas/ + prompts/
 # TODO(phase2): lib/ + prompts/ 를 Lambda Layer로 분리.
@@ -24,8 +26,10 @@ _ADAPTER = BedrockAdapter(model_id=_MODEL_ID, bundle=_BUNDLE)
 _s3 = boto3.client("s3")
 
 
-def handler(event: dict, _ctx) -> dict:
-    masked = _s3.get_object(Bucket=event["maskedBucket"], Key=event["maskedKey"])["Body"].read().decode()
+def handler(event: dict[str, Any], _ctx: Any) -> dict[str, Any]:
+    masked = (
+        _s3.get_object(Bucket=event["maskedBucket"], Key=event["maskedKey"])["Body"].read().decode()
+    )
     result = _ADAPTER.classify(masked)
     return {
         **event,

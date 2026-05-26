@@ -1,4 +1,5 @@
 """metrics.py EMF emit 동작 단위 테스트."""
+
 import json
 from io import StringIO
 from unittest.mock import patch
@@ -24,6 +25,7 @@ def test_emit_uses_env_var_for_env_dimension(monkeypatch) -> None:
     import importlib
 
     from lib import metrics
+
     importlib.reload(metrics)
 
     buf = StringIO()

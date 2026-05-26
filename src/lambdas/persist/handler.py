@@ -1,4 +1,5 @@
 """Persist Lambda: PII sweep → DDB write + (optional) Firehose put."""
+
 from __future__ import annotations
 
 import json
@@ -6,6 +7,7 @@ import os
 import sys
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 
 # Lambda zip 루트 = /var/task/. TODO(phase2): lib/ → Lambda Layer.
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -22,7 +24,7 @@ _firehose = boto3.client("firehose")
 _FIREHOSE_NAME = os.environ.get("FIREHOSE_NAME", "")
 
 
-def _to_decimal(o):  # type: ignore[no-untyped-def]
+def _to_decimal(o: Any) -> Any:
     if isinstance(o, float):
         return Decimal(str(o))
     if isinstance(o, dict):
@@ -32,7 +34,7 @@ def _to_decimal(o):  # type: ignore[no-untyped-def]
     return o
 
 
-def handler(event: dict, _ctx) -> dict:
+def handler(event: dict[str, Any], _ctx: Any) -> dict[str, Any]:
     item = build_ddb_item(event)
     try:
         _table.put_item(
@@ -57,5 +59,7 @@ def handler(event: dict, _ctx) -> dict:
             Record={"Data": (json.dumps(item, default=str) + "\n").encode("utf-8")},
         )
     emit("classification.processed", 1.0, 대code=item["category_대code"])
-    emit("classification.confidence", item["confidence"], unit="None", 대code=item["category_대code"])
+    emit(
+        "classification.confidence", item["confidence"], unit="None", 대code=item["category_대code"]
+    )
     return {**event, "persisted": True}

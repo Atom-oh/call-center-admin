@@ -1,11 +1,10 @@
 """SFN ASL JSON 정의 정적 검증 — apply 없이 구조만 확인."""
+
 from __future__ import annotations
 
 import json
 import subprocess
 from pathlib import Path
-
-import pytest
 
 
 def _tf_show_json(env_dir: Path) -> dict | None:
@@ -30,8 +29,16 @@ def test_sfn_definition_structure_extracted_from_module() -> None:
     tf_path = Path(__file__).parent.parent.parent / "infra/modules/classify-pipeline/main.tf"
     text = tf_path.read_text(encoding="utf-8")
     # Key states must be named in the definition
-    for state in ("PiiGuard", "Classify", "ConfidenceBranch", "Verify", "Persist",
-                  "MarkAutoHigh", "SendToClassifyDlq", "SendToPersistDlq"):
+    for state in (
+        "PiiGuard",
+        "Classify",
+        "ConfidenceBranch",
+        "Verify",
+        "Persist",
+        "MarkAutoHigh",
+        "SendToClassifyDlq",
+        "SendToPersistDlq",
+    ):
         assert state in text, f"missing SFN state: {state}"
     # EventBridge wiring
     assert "aws_cloudwatch_event_rule" in text

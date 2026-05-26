@@ -86,11 +86,15 @@ jobs:
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: '1.9.8'
+          terraform_wrapper: false   # node 의존 제거 — self-hosted 러너 안정성
       - name: terraform fmt -recursive -check
         run: terraform fmt -recursive -check infra/
       - name: tflint
         run: |
-          curl -L -o /tmp/tflint.zip https://github.com/terraform-linters/tflint/releases/latest/download/tflint_linux_amd64.zip
+          # tflint binary archive is arm64/x86 specific — pick by RUNNER_ARCH
+          ARCH="amd64"
+          [ "$RUNNER_ARCH" = "ARM64" ] && ARCH="arm64"
+          curl -L -o /tmp/tflint.zip "https://github.com/terraform-linters/tflint/releases/latest/download/tflint_linux_${ARCH}.zip"
           unzip -o /tmp/tflint.zip -d /tmp && sudo mv /tmp/tflint /usr/local/bin/
           tflint --init >/dev/null 2>&1 || true
           tflint -f compact --chdir=infra/envs/dev || true
@@ -98,11 +102,10 @@ jobs:
         run: |
           terraform -chdir=infra/envs/dev init -backend=false -reconfigure
           terraform -chdir=infra/envs/dev validate
-      - name: tfsec
-        uses: aquasecurity/tfsec-action@v1.0.3
-        with:
-          working_directory: infra
-          soft_fail: true   # informational while Phase 1 IAM still has documented broad scopes
+      # tfsec dropped — aquasecurity/tfsec-action@v1.0.3 Docker image is x86-only and crashes
+      # on call-center-admin-arm runner with "Exec format error". Phase 1 originally had
+      # soft_fail=true (informational), so removing it doesn't regress safety. Re-introduce
+      # via a multi-arch scanner (e.g. checkov, trivy) or the tfsec native ARM binary in PR9.
 
   taxonomy-regeneration-check:
     name: Taxonomy artifacts up to date

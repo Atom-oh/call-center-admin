@@ -10,9 +10,23 @@ assert_file_exists "docs/operations/github-actions-setup.md"
 # pr-review.yml — must use pull_request_target + Bedrock Claude + diff filter
 assert_grep "pull_request_target" ".github/workflows/pr-review.yml" "pr-review uses pull_request_target trigger"
 assert_grep "CLAUDE_CODE_USE_BEDROCK" ".github/workflows/pr-review.yml" "pr-review uses Bedrock backend"
-assert_grep "claude-opus-4-7" ".github/workflows/pr-review.yml" "pr-review pins Opus 4.7 model"
+assert_grep "ANTHROPIC_BEDROCK_BASE_URL" ".github/workflows/pr-review.yml" "pr-review sets Bedrock base URL"
+assert_grep "apac.anthropic.claude-opus-4-7" ".github/workflows/pr-review.yml" "pr-review uses APAC cross-region inference profile"
 assert_grep "taxonomy_tree" ".github/workflows/pr-review.yml" "pr-review filters generated taxonomy artifacts"
-assert_grep "claude --print" ".github/workflows/pr-review.yml" "pr-review invokes claude CLI"
+assert_grep "claude -p" ".github/workflows/pr-review.yml" "pr-review invokes claude CLI with -p (system prompt)"
+assert_grep "output-format text" ".github/workflows/pr-review.yml" "pr-review uses output-format text (not json)"
+assert_grep "VERDICT: " ".github/workflows/pr-review.yml" "pr-review has VERDICT-based gate"
+assert_grep "callcenter-pr-review" ".github/workflows/pr-review.yml" "pr-review uses comment marker for upsert"
+# Negative: pr-review should NOT use OIDC configure-aws-credentials (Instance Profile pattern)
+TOTAL=$((TOTAL + 1))
+if grep -qE "aws-actions/configure-aws-credentials" .github/workflows/pr-review.yml; then
+    FAIL=$((FAIL + 1))
+    FAILED_NAMES+=("pr-review must use Instance Profile, not OIDC")
+    echo "not ok $TOTAL - pr-review must use Instance Profile, not OIDC"
+else
+    PASS=$((PASS + 1))
+    echo "ok $TOTAL - pr-review uses runner Instance Profile (no OIDC step)"
+fi
 
 # ci.yml — must run pytest + terraform validate, gated by path filters
 assert_grep "dorny/paths-filter" ".github/workflows/ci.yml" "ci uses paths-filter"
@@ -74,3 +88,27 @@ else
 fi
 assert_grep "Self-hosted runners" "docs/operations/github-actions-setup.md" "setup docs cover self-hosted runner setup"
 assert_grep "call-center-admin-claude-arm" "docs/operations/github-actions-setup.md" "setup docs document claude-arm runner"
+
+# AWS_ACCOUNT_ID must be a repository VARIABLE (not secret), so workflows can graceful-skip
+# Terraform workflows still need OIDC + vars.AWS_ACCOUNT_ID (pr-review doesn't)
+assert_grep "vars.AWS_ACCOUNT_ID" ".github/workflows/terraform-plan.yml" "terraform-plan uses vars.AWS_ACCOUNT_ID"
+assert_grep "vars.AWS_ACCOUNT_ID" ".github/workflows/terraform-apply.yml" "terraform-apply uses vars.AWS_ACCOUNT_ID"
+# Negative: no workflow should fall back to secrets.AWS_ACCOUNT_ID
+TOTAL=$((TOTAL + 1))
+if grep -qE "secrets\.AWS_ACCOUNT_ID" .github/workflows/*.yml; then
+    FAIL=$((FAIL + 1))
+    FAILED_NAMES+=("workflows must use vars.AWS_ACCOUNT_ID not secrets")
+    echo "not ok $TOTAL - workflows must use vars.AWS_ACCOUNT_ID not secrets"
+else
+    PASS=$((PASS + 1))
+    echo "ok $TOTAL - workflows use vars.AWS_ACCOUNT_ID (no secrets fallback)"
+fi
+
+# setup-terraform must disable the node-based wrapper for self-hosted runner safety
+assert_grep "terraform_wrapper: false" ".github/workflows/ci.yml" "ci disables setup-terraform node wrapper"
+assert_grep "terraform_wrapper: false" ".github/workflows/terraform-plan.yml" "terraform-plan disables setup-terraform node wrapper"
+assert_grep "terraform_wrapper: false" ".github/workflows/terraform-apply.yml" "terraform-apply disables setup-terraform node wrapper"
+
+# OIDC-using terraform workflows must have if: vars.AWS_ACCOUNT_ID != '' graceful gate
+assert_grep "if: vars.AWS_ACCOUNT_ID != ''" ".github/workflows/terraform-plan.yml" "terraform-plan job gated by vars.AWS_ACCOUNT_ID"
+assert_grep "if: vars.AWS_ACCOUNT_ID != ''" ".github/workflows/terraform-apply.yml" "terraform-apply job gated by vars.AWS_ACCOUNT_ID"
