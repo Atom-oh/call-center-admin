@@ -2,6 +2,7 @@
 
 순서가 중요: card → rrn → phone → account (긴/특수 패턴 먼저).
 """
+
 from __future__ import annotations
 
 import re

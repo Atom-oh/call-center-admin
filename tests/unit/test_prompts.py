@@ -1,4 +1,5 @@
 """Prompt bundle builder 테스트."""
+
 import json
 from pathlib import Path
 
@@ -21,9 +22,7 @@ def test_build_prompt_bundle_has_two_cache_breakpoints(repo_root: Path) -> None:
 
 
 def test_user_message_includes_transcript() -> None:
-    bundle = PromptBundle(
-        system_blocks=["rules", "tree"], valid_codes={"x"}, prompt_version="v1.0"
-    )
+    bundle = PromptBundle(system_blocks=["rules", "tree"], valid_codes={"x"}, prompt_version="v1.0")
     user = bundle.build_user_message(masked_transcript="agent: hi")
     assert "agent: hi" in user
     assert "JSON" in user
@@ -33,7 +32,9 @@ def test_taxonomy_with_invalid_level_raises_value_error() -> None:
     """taxonomy_tree.json이 손상되어 level=0 또는 level=4 노드가 들어와도
     silent wrap (level=0 → marker[-1]="소분류") 대신 ValueError로 surface해야 한다.
     """
-    bad = json.dumps([{"name": "x", "code": "X", "description": "", "level": 4, "parent_code": None}])
+    bad = json.dumps(
+        [{"name": "x", "code": "X", "description": "", "level": 4, "parent_code": None}]
+    )
     with pytest.raises(ValueError, match="invalid level 4"):
         _serialize_taxonomy(bad)
 

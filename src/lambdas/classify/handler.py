@@ -1,4 +1,5 @@
 """Step Functions task: read masked transcript, call Bedrock, return classification."""
+
 from __future__ import annotations
 
 import dataclasses
@@ -25,7 +26,9 @@ _s3 = boto3.client("s3")
 
 
 def handler(event: dict, _ctx) -> dict:
-    masked = _s3.get_object(Bucket=event["maskedBucket"], Key=event["maskedKey"])["Body"].read().decode()
+    masked = (
+        _s3.get_object(Bucket=event["maskedBucket"], Key=event["maskedKey"])["Body"].read().decode()
+    )
     result = _ADAPTER.classify(masked)
     return {
         **event,

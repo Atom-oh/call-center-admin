@@ -94,6 +94,7 @@ def test_persist_skips_firehose_when_name_empty(env, monkeypatch) -> None:
 
     # No assertion needed — would crash if firehose were called against non-existent stream
     from lambdas.persist.handler import handler
+
     out = handler(_event(), None)
     assert out["persisted"] is True
 

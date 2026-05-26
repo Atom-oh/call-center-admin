@@ -1,4 +1,5 @@
 """Persist Lambda: PII sweep → DDB write + (optional) Firehose put."""
+
 from __future__ import annotations
 
 import json
@@ -57,5 +58,7 @@ def handler(event: dict, _ctx) -> dict:
             Record={"Data": (json.dumps(item, default=str) + "\n").encode("utf-8")},
         )
     emit("classification.processed", 1.0, 대code=item["category_대code"])
-    emit("classification.confidence", item["confidence"], unit="None", 대code=item["category_대code"])
+    emit(
+        "classification.confidence", item["confidence"], unit="None", 대code=item["category_대code"]
+    )
     return {**event, "persisted": True}

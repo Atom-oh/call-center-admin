@@ -3,6 +3,7 @@
 Lambda가 stdout에 EMF JSON을 찍으면 CloudWatch가 자동으로 메트릭으로 수집.
 PR9 (observability) 단계에서 알람·대시보드와 연동된다.
 """
+
 from __future__ import annotations
 
 import json

@@ -1,4 +1,5 @@
 """CLI: xlsx → src/prompts/v1.0/taxonomy_tree.json"""
+
 from __future__ import annotations
 
 import argparse
@@ -14,9 +15,7 @@ def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--xlsx", type=Path, required=True)
     p.add_argument("--out-json", type=Path, default=Path("src/prompts/v1.0/taxonomy_tree.json"))
-    p.add_argument(
-        "--out-md", type=Path, default=Path("src/prompts/v1.0/taxonomy_tree.md")
-    )
+    p.add_argument("--out-md", type=Path, default=Path("src/prompts/v1.0/taxonomy_tree.md"))
     args = p.parse_args()
 
     nodes = parse_xlsx(args.xlsx)
