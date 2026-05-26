@@ -74,3 +74,28 @@ else
 fi
 assert_grep "Self-hosted runners" "docs/operations/github-actions-setup.md" "setup docs cover self-hosted runner setup"
 assert_grep "call-center-admin-claude-arm" "docs/operations/github-actions-setup.md" "setup docs document claude-arm runner"
+
+# AWS_ACCOUNT_ID must be a repository VARIABLE (not secret), so workflows can graceful-skip
+assert_grep "vars.AWS_ACCOUNT_ID" ".github/workflows/pr-review.yml" "pr-review uses vars.AWS_ACCOUNT_ID (graceful gate)"
+assert_grep "vars.AWS_ACCOUNT_ID" ".github/workflows/terraform-plan.yml" "terraform-plan uses vars.AWS_ACCOUNT_ID"
+assert_grep "vars.AWS_ACCOUNT_ID" ".github/workflows/terraform-apply.yml" "terraform-apply uses vars.AWS_ACCOUNT_ID"
+# Negative: no workflow should fall back to secrets.AWS_ACCOUNT_ID
+TOTAL=$((TOTAL + 1))
+if grep -qE "secrets\.AWS_ACCOUNT_ID" .github/workflows/*.yml; then
+    FAIL=$((FAIL + 1))
+    FAILED_NAMES+=("workflows must use vars.AWS_ACCOUNT_ID not secrets")
+    echo "not ok $TOTAL - workflows must use vars.AWS_ACCOUNT_ID not secrets"
+else
+    PASS=$((PASS + 1))
+    echo "ok $TOTAL - workflows use vars.AWS_ACCOUNT_ID (no secrets fallback)"
+fi
+
+# setup-terraform must disable the node-based wrapper for self-hosted runner safety
+assert_grep "terraform_wrapper: false" ".github/workflows/ci.yml" "ci disables setup-terraform node wrapper"
+assert_grep "terraform_wrapper: false" ".github/workflows/terraform-plan.yml" "terraform-plan disables setup-terraform node wrapper"
+assert_grep "terraform_wrapper: false" ".github/workflows/terraform-apply.yml" "terraform-apply disables setup-terraform node wrapper"
+
+# Each AWS-using job must have if: vars.AWS_ACCOUNT_ID != '' graceful gate
+assert_grep "if: vars.AWS_ACCOUNT_ID != ''" ".github/workflows/pr-review.yml" "pr-review job gated by vars.AWS_ACCOUNT_ID"
+assert_grep "if: vars.AWS_ACCOUNT_ID != ''" ".github/workflows/terraform-plan.yml" "terraform-plan job gated by vars.AWS_ACCOUNT_ID"
+assert_grep "if: vars.AWS_ACCOUNT_ID != ''" ".github/workflows/terraform-apply.yml" "terraform-apply job gated by vars.AWS_ACCOUNT_ID"

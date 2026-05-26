@@ -5,7 +5,7 @@ import argparse
 import csv
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent / "src"))
@@ -60,7 +60,7 @@ def main() -> int:
         if write_header:
             w.writerow(["timestamp", "prompt_version", "model_id", "n", "acc_대", "acc_중", "acc_소"])
         w.writerow([
-            datetime.now(timezone.utc).isoformat(),
+            datetime.now(UTC).isoformat(),
             "v1.0",
             args.model_id,
             total,
