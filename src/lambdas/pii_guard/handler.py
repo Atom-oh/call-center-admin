@@ -1,0 +1,61 @@
+"""Step Functions task: read raw STT from S3, mask PII, write to masked S3.
+
+Input event:
+  { "rawBucket": str, "rawKey": str }
+
+Output:
+  { "callId": str, "agentId": str, "startedAt": str, "durationSec": int,
+    "rawBucket": str, "rawKey": str,
+    "maskedBucket": str, "maskedKey": str,
+    "maskStats": {"phone": int, "rrn": int, "account": int, "card": int} }
+"""
+from __future__ import annotations
+
+import json
+import os
+import sys
+from pathlib import Path
+
+# Lambda 패키징 시 src/lib도 함께 zip
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+import boto3
+
+from lib.pii_regex import mask
+
+_s3 = boto3.client("s3")
+_MASKED_BUCKET = os.environ["MASKED_BUCKET"]
+
+
+def handler(event: dict, _context) -> dict:
+    raw_bucket = event["rawBucket"]
+    raw_key = event["rawKey"]
+
+    obj = _s3.get_object(Bucket=raw_bucket, Key=raw_key)
+    payload = json.loads(obj["Body"].read())
+
+    transcript_text = "\n".join(
+        f"{turn['speaker']}: {turn['text']}" for turn in payload["transcript"]
+    )
+    masked_text, stats = mask(transcript_text)
+
+    masked_key = raw_key.replace(".json", "_masked.txt")
+    _s3.put_object(
+        Bucket=_MASKED_BUCKET,
+        Key=masked_key,
+        Body=masked_text.encode("utf-8"),
+        ContentType="text/plain; charset=utf-8",
+        ServerSideEncryption="aws:kms",
+    )
+
+    return {
+        "callId": payload["callId"],
+        "agentId": payload["agentId"],
+        "startedAt": payload["startedAt"],
+        "durationSec": payload["durationSec"],
+        "rawBucket": raw_bucket,
+        "rawKey": raw_key,
+        "maskedBucket": _MASKED_BUCKET,
+        "maskedKey": masked_key,
+        "maskStats": stats.as_dict(),
+    }
