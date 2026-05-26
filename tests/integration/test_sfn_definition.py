@@ -1,11 +1,10 @@
 """SFN ASL JSON 정의 정적 검증 — apply 없이 구조만 확인."""
+
 from __future__ import annotations
 
 import json
 import subprocess
 from pathlib import Path
-
-import pytest
 
 
 def _tf_show_json(env_dir: Path) -> dict | None:
