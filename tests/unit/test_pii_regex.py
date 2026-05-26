@@ -55,3 +55,16 @@ def test_multiple_pii_in_one_text() -> None:
     assert stats.account == 1
     assert "010-1111-2222" not in out
     assert "110123456789" not in out
+
+
+def test_card_not_over_eaten_when_preceded_by_short_digit() -> None:
+    """회귀 방지: 카드 앞에 짧은 숫자가 있어도 정상 마스킹돼야 한다.
+
+    이전 정규식 `(?:\\d[ -]?){13,19}`은 `0 4532-0151-1283-0366`을 한 번에 잡아
+    Luhn 실패 → 마스킹 안 됨. 수정된 정규식은 digit count로 제한해 정확히 16자리만 매칭.
+    """
+    text = "참고 0 4532-0151-1283-0366 사용 가능"
+    out, stats = mask(text)
+    assert MASK_CARD in out
+    assert "4532-0151-1283-0366" not in out
+    assert stats.card == 1

@@ -16,7 +16,8 @@ import os
 import sys
 from pathlib import Path
 
-# Lambda 패키징 시 src/lib도 함께 zip
+# Lambda 패키징 시 src/lib도 함께 zip. 런타임 zip 루트 = /var/task/, 그 안에 lib/ + lambdas/.
+# TODO(phase2): lib/ 를 Lambda Layer로 분리하고 본 sys.path hack 제거.
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import boto3

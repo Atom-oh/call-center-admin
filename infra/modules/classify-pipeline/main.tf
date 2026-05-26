@@ -57,9 +57,11 @@ resource "aws_iam_role_policy" "pii_guard" {
         Resource = var.kms_masked_arn
       },
       {
+        # Log group is pre-created (aws_cloudwatch_log_group.pii_guard) so we omit
+        # logs:CreateLogGroup and tighten Resource to the specific stream pattern.
         Effect   = "Allow"
-        Action   = ["logs:CreateLogGroup", "logs:CreateLogStream", "logs:PutLogEvents"]
-        Resource = "*"
+        Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "${aws_cloudwatch_log_group.pii_guard.arn}:*"
       },
     ]
   })
