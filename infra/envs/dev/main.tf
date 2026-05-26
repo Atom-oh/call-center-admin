@@ -34,4 +34,6 @@ module "classify_pipeline" {
   ddb_consult_arn    = module.storage.ddb_consult_arn
   classify_dlq_arn   = module.storage.classify_dlq_arn
   persist_dlq_arn    = module.storage.persist_dlq_arn
+  # PR7 fills this with the Firehose delivery stream name.
+  firehose_name = ""
 }

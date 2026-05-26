@@ -16,3 +16,9 @@ variable "kms_masked_arn" { type = string }
 variable "ddb_consult_arn" { type = string }
 variable "classify_dlq_arn" { type = string }
 variable "persist_dlq_arn" { type = string }
+
+# Reserved for PR7 (Firehose Parquet). Empty string disables the put_record call.
+variable "firehose_name" {
+  type    = string
+  default = ""
+}
