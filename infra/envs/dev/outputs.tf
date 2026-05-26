@@ -23,3 +23,5 @@ output "pii_guard_arn" { value = module.classify_pipeline.pii_guard_arn }
 output "pii_guard_name" { value = module.classify_pipeline.pii_guard_name }
 output "classify_arn" { value = module.classify_pipeline.classify_arn }
 output "classify_name" { value = module.classify_pipeline.classify_name }
+output "verify_arn" { value = module.classify_pipeline.verify_arn }
+output "verify_name" { value = module.classify_pipeline.verify_name }

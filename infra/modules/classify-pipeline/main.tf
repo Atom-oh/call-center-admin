@@ -58,6 +58,29 @@ data "archive_file" "classify" {
   output_path = "${path.module}/build/classify.zip"
 }
 
+data "external" "verify_stage" {
+  program = ["bash", "-c", <<-EOT
+    set -e
+    STAGE_DIR=${path.module}/build/verify
+    SRC_DIR=${path.module}/../../../src
+    rm -rf "$STAGE_DIR"
+    mkdir -p "$STAGE_DIR"
+    cp -R "$SRC_DIR/lib" "$STAGE_DIR/"
+    cp -R "$SRC_DIR/prompts" "$STAGE_DIR/"
+    mkdir -p "$STAGE_DIR/lambdas"
+    cp -R "$SRC_DIR/lambdas/verify" "$STAGE_DIR/lambdas/"
+    find "$STAGE_DIR" -type d -name __pycache__ -exec rm -rf {} + || true
+    echo "{\"staged\":\"$STAGE_DIR\"}"
+  EOT
+  ]
+}
+
+data "archive_file" "verify" {
+  type        = "zip"
+  source_dir  = data.external.verify_stage.result.staged
+  output_path = "${path.module}/build/verify.zip"
+}
+
 resource "aws_iam_role" "pii_guard" {
   name = "callcenter-${var.env}-pii-guard"
   assume_role_policy = jsonencode({
@@ -196,4 +219,72 @@ resource "aws_lambda_function" "classify" {
   }
 
   depends_on = [aws_cloudwatch_log_group.classify]
+}
+
+# ---------- Verify Lambda ----------
+
+resource "aws_iam_role" "verify" {
+  name = "callcenter-${var.env}-verify"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "verify" {
+  role = aws_iam_role.verify.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["s3:GetObject"]
+        Resource = "${var.bucket_masked_arn}/*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["kms:Decrypt"]
+        Resource = var.kms_masked_arn
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["bedrock:InvokeModel"]
+        Resource = "arn:aws:bedrock:ap-northeast-2::foundation-model/anthropic.claude-sonnet-4-*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "${aws_cloudwatch_log_group.verify.arn}:*"
+      },
+    ]
+  })
+}
+
+resource "aws_cloudwatch_log_group" "verify" {
+  name              = "/aws/lambda/callcenter-${var.env}-verify"
+  retention_in_days = 30
+}
+
+resource "aws_lambda_function" "verify" {
+  function_name    = "callcenter-${var.env}-verify"
+  role             = aws_iam_role.verify.arn
+  handler          = "lambdas.verify.handler.handler"
+  runtime          = "python3.12"
+  filename         = data.archive_file.verify.output_path
+  source_code_hash = data.archive_file.verify.output_base64sha256
+  timeout          = 300
+  memory_size      = 1024
+
+  environment {
+    variables = {
+      VERIFY_MODEL_ID = "anthropic.claude-sonnet-4-6-20260101-v1:0"
+      PROMPT_DIR      = "/var/task/prompts/v1.0"
+    }
+  }
+
+  depends_on = [aws_cloudwatch_log_group.verify]
 }
