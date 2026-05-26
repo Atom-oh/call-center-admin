@@ -12,8 +12,9 @@ variable "bucket_masked_id" { type = string }
 variable "kms_raw_arn" { type = string }
 variable "kms_masked_arn" { type = string }
 
-# Reserved for PR6 (persist Lambda DDB writes + SFN DLQ routing).
+# PR6 (persist Lambda DDB writes + SFN DLQ routing).
 variable "ddb_consult_arn" { type = string }
+variable "kms_ddb_arn" { type = string }
 variable "classify_dlq_arn" { type = string }
 variable "persist_dlq_arn" { type = string }
 

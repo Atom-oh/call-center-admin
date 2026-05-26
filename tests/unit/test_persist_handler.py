@@ -96,3 +96,25 @@ def test_persist_skips_firehose_when_name_empty(env, monkeypatch) -> None:
     from lambdas.persist.handler import handler
     out = handler(_event(), None)
     assert out["persisted"] is True
+
+
+@mock_aws
+def test_persist_skips_silently_on_prompt_version_conflict(env) -> None:
+    """동일 callId에 다른 promptVersion으로 재처리 시 silent skip + 메트릭만 emit."""
+    ddb = boto3.client("dynamodb", region_name="ap-northeast-2")
+    ddb.create_table(
+        TableName="callcenter-dev-consult-results",
+        KeySchema=[{"AttributeName": "callId", "KeyType": "HASH"}],
+        AttributeDefinitions=[{"AttributeName": "callId", "AttributeType": "S"}],
+        BillingMode="PAY_PER_REQUEST",
+    )
+    from lambdas.persist.handler import handler
+
+    # First write with v1.0 succeeds
+    handler(_event(), None)
+    # Re-process same callId with v2.0 — should not raise, returns persisted=False
+    evt2 = _event()
+    evt2["promptVersion"] = "v2.0"
+    out = handler(evt2, None)
+    assert out["persisted"] is False
+    assert out["skipReason"] == "promptVersion-conflict"

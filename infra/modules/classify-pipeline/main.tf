@@ -338,11 +338,16 @@ resource "aws_iam_role_policy" "persist" {
         Resource = var.ddb_consult_arn
       },
       {
+        # Scope KMS to the DDB CMK only — persist Lambda writes encrypted items
+        # to consult-results and does not touch other CMKs.
         Effect   = "Allow"
         Action   = ["kms:Encrypt", "kms:Decrypt", "kms:GenerateDataKey"]
-        Resource = "*"
+        Resource = var.kms_ddb_arn
       },
       {
+        # PR7 will narrow this to the specific delivery stream ARN once
+        # firehose_name is populated. With firehose_name="" the persist
+        # handler skips put_record entirely, so this allow-all is dormant.
         Effect   = "Allow"
         Action   = ["firehose:PutRecord", "firehose:PutRecordBatch"]
         Resource = "*"

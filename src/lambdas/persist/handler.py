@@ -11,6 +11,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import boto3
+from botocore.exceptions import ClientError
 
 from lib.metrics import emit
 from lib.persistence import build_ddb_item
@@ -33,11 +34,23 @@ def _to_decimal(o):  # type: ignore[no-untyped-def]
 
 def handler(event: dict, _ctx) -> dict:
     item = build_ddb_item(event)
-    _table.put_item(
-        Item=_to_decimal(item),
-        ConditionExpression="attribute_not_exists(callId) OR promptVersion = :pv",
-        ExpressionAttributeValues={":pv": item["promptVersion"]},
-    )
+    try:
+        _table.put_item(
+            Item=_to_decimal(item),
+            ConditionExpression="attribute_not_exists(callId) OR promptVersion = :pv",
+            ExpressionAttributeValues={":pv": item["promptVersion"]},
+        )
+    except ClientError as ex:
+        # ConditionalCheckFailedException happens when the same callId was already
+        # written under a DIFFERENT promptVersion (i.e., backfill / reclassification
+        # attempt). Treat as "skip silently" rather than retrying 3x and DLQ'ing —
+        # the older record is preserved by design. Surface as a metric so PR9
+        # observability can chart this.
+        code = ex.response.get("Error", {}).get("Code", "")
+        if code == "ConditionalCheckFailedException":
+            emit("classification.skippedExisting", 1.0, 대code=item["category_대code"])
+            return {**event, "persisted": False, "skipReason": "promptVersion-conflict"}
+        raise
     if _FIREHOSE_NAME:
         _firehose.put_record(
             DeliveryStreamName=_FIREHOSE_NAME,

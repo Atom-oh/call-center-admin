@@ -32,6 +32,7 @@ module "classify_pipeline" {
   kms_raw_arn        = module.storage.kms_raw_arn
   kms_masked_arn     = module.storage.kms_masked_arn
   ddb_consult_arn    = module.storage.ddb_consult_arn
+  kms_ddb_arn        = module.storage.kms_ddb_arn
   classify_dlq_arn   = module.storage.classify_dlq_arn
   persist_dlq_arn    = module.storage.persist_dlq_arn
   # PR7 fills this with the Firehose delivery stream name.

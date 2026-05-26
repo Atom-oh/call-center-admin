@@ -41,7 +41,9 @@ def build_ddb_item(event: dict[str, Any]) -> dict[str, Any]:
             {"code": a.get("code", ""), "why_rejected": sanitize_text(a.get("why_rejected"))[:500]}
             for a in c.get("alternativesConsidered", [])
         ],
-        "modelPath": event.get("modelPath", [event.get("modelId")]),
+        # Filter None defensively — if both modelPath and modelId are missing,
+        # store an empty list rather than [None] which downstream analytics chokes on.
+        "modelPath": [m for m in event.get("modelPath", [event.get("modelId")]) if m],
         "promptVersion": event.get("promptVersion", "v1.0"),
         "verified": event.get("verified", "auto-high"),
         "status": event.get("status", "confirmed"),
