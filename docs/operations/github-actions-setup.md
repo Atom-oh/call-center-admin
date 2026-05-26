@@ -4,12 +4,14 @@
 
 ## 0. 본 프로젝트의 자동화 개요
 
-| 워크플로우 | 트리거 | 권한 | 비용 |
-|------------|--------|------|------|
-| `pr-review.yml` | `pull_request_target` | Bedrock InvokeModel (read-only) | Claude Opus 4.7 호출당 ~$0.05~0.50 |
-| `ci.yml` | `pull_request`, `push:main`, `workflow_dispatch` | 없음 (GitHub-hosted runner) | 무료 (public)/ minute당 (private) |
-| `terraform-plan.yml` | `pull_request` infra 변경 | AWS read-only | tfstate S3 GET + 짧은 plan 호출 |
-| `terraform-apply.yml` | `push:main` infra 변경 + `workflow_dispatch` | AWS Terraform apply | apply 결과에 따라 |
+| 워크플로우 | 트리거 | runs-on | 권한 | 비용 |
+|------------|--------|---------|------|------|
+| `pr-review.yml` | `pull_request_target` | `call-center-admin-claude-arm` | Bedrock InvokeModel (read-only) | Claude Opus 4.7 호출당 ~$0.05~0.50 |
+| `ci.yml` | `pull_request`, `push:main`, `workflow_dispatch` | `call-center-admin-arm` | 없음 | 러너 시간 |
+| `terraform-plan.yml` | `pull_request` infra 변경 | `call-center-admin-x86` | AWS read-only | tfstate S3 GET + 짧은 plan 호출 |
+| `terraform-apply.yml` | `push:main` infra 변경 + `workflow_dispatch` | `call-center-admin-x86` | AWS Terraform apply | apply 결과에 따라 |
+
+> **Self-hosted runners**: 본 프로젝트는 aws-fsi-demo와 동일한 self-hosted runner 명명 컨벤션을 사용합니다 (`call-center-admin-{arm,x86,claude-arm}`). 러너 셋업 전에는 워크플로우가 큐에 머물고 실행되지 않으므로 §3.5 의 러너 셋업을 먼저 완료해야 합니다.
 
 ## 1. AWS Identity Provider (한 번만)
 
@@ -131,6 +133,49 @@ aws iam create-open-id-connect-provider \
 stg / prd 는 `sub` 의 `environment:dev` 를 `environment:stg` / `environment:prd` 로 교체.
 
 **Permission policy**: 본 프로젝트가 사용하는 AWS 리소스 종류 (VPC + S3 + KMS + DynamoDB + Lambda + IAM + SFN + EventBridge + SQS + Firehose + Glue + Athena + Cognito + Fargate + Bedrock invoke) 에 대한 CRUD. 운영 안정화 시점에 좁혀 나갈 예정.
+
+## 2.5 Self-hosted runners (필수)
+
+본 프로젝트는 GitHub-hosted 러너 대신 EC2 기반 self-hosted runner 3종을 사용한다 (aws-fsi-demo 컨벤션 동일):
+
+| 러너 라벨 | 인스턴스 타입 | 용도 | pre-install |
+|-----------|---------------|------|------------|
+| `call-center-admin-arm` | Graviton (c7g.medium 이상) | CI: Python lint/test + Terraform validate | Python 3.12, Node 20, Terraform 1.9 |
+| `call-center-admin-x86` | x86 (c7i.medium 이상) | Terraform plan/apply | Terraform 1.9, AWS CLI v2 |
+| `call-center-admin-claude-arm` | Graviton (c7g.large 이상) | PR 자동 리뷰 | Node 20, `@anthropic-ai/claude-code` 글로벌 |
+
+### 등록 절차
+
+1. **EC2 인스턴스 부팅** — Amazon Linux 2023 ARM/x86 기반. EBS gp3 30GB. SSM Agent 활성 (콘솔 접근 + patching).
+2. **IAM Instance Profile** 부여 — `callcenter-runner-instance` role. 권한:
+   - `bedrock:InvokeModel` (claude-arm 만; `anthropic.claude-opus-4-*` ARN 패턴)
+   - `s3:GetObject` on tfstate 버킷 (x86 만)
+   - `ssm:UpdateInstanceInformation` (모든 러너, SSM 관리용)
+3. **GitHub Actions Runner 등록** — `gh actions-runner` 또는 Terraform `aws_codebuild` / `ec2-github-runner` 모듈:
+   ```bash
+   # 토큰은 Settings > Actions > Runners > New self-hosted runner 에서 발급
+   ./config.sh --url https://github.com/Atom-oh/call-center-admin \
+       --token <TOKEN> \
+       --labels call-center-admin-arm \
+       --unattended --replace
+   sudo ./svc.sh install
+   sudo ./svc.sh start
+   ```
+4. **사전 설치 확인**:
+   ```bash
+   # arm 러너
+   python3 --version    # 3.12.x
+   terraform --version  # 1.9.x
+   node --version       # v20.x
+
+   # claude-arm 러너 (위 + 다음)
+   claude --version     # @anthropic-ai/claude-code 글로벌 설치
+   ```
+5. **scaling 전략**: 처음에는 라벨당 1대 고정. PR 동시성이 늘면 라벨당 2-3대로 확장. ASG + `philips-labs/terraform-aws-github-runner` 같은 모듈로 ephemeral 러너 자동화 가능.
+
+### Bedrock 호출 (claude-arm 러너)
+
+`pr-review.yml` 의 `claude --print --output-format=json` 호출은 `CLAUDE_CODE_USE_BEDROCK=1` 환경변수에 따라 Anthropic API 대신 Bedrock 을 사용한다. **러너 IAM Instance Profile** 만으로도 동작하지만, 워크플로우는 명시적으로 OIDC role (`callcenter-github-actions-pr-review`) 을 assume 하여 호출함. 두 권한 중 하나라도 `bedrock:InvokeModel` 을 가지면 충분.
 
 ## 3. GitHub Secrets (organization 또는 repo level)
 

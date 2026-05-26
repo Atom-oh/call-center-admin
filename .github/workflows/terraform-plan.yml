@@ -30,7 +30,7 @@ env:
 jobs:
   plan-dev:
     name: terraform plan — dev
-    runs-on: ubuntu-latest
+    runs-on: call-center-admin-x86
     steps:
       - uses: actions/checkout@v4
 

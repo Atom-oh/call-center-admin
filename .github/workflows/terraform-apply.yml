@@ -44,7 +44,7 @@ env:
 jobs:
   apply:
     name: terraform apply — ${{ github.event.inputs.environment || 'dev' }}
-    runs-on: ubuntu-latest
+    runs-on: call-center-admin-x86
     environment: ${{ github.event.inputs.environment || 'dev' }}
     steps:
       - uses: actions/checkout@v4

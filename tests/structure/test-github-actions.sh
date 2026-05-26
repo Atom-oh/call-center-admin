@@ -56,3 +56,21 @@ assert_grep "callcenter-github-actions-pr-review" "docs/operations/github-action
 assert_grep "callcenter-github-actions-tf-plan" "docs/operations/github-actions-setup.md" "setup docs define tf-plan role"
 assert_grep "callcenter-github-actions-tf-apply" "docs/operations/github-actions-setup.md" "setup docs define tf-apply role"
 assert_grep "Branch Protection" "docs/operations/github-actions-setup.md" "setup docs cover branch protection"
+
+# Self-hosted runner labels — workflows must use call-center-admin-{arm,x86,claude-arm}
+assert_grep "call-center-admin-claude-arm" ".github/workflows/pr-review.yml" "pr-review runs on claude-arm runner"
+assert_grep "call-center-admin-arm" ".github/workflows/ci.yml" "ci runs on arm runner"
+assert_grep "call-center-admin-x86" ".github/workflows/terraform-plan.yml" "terraform-plan runs on x86 runner"
+assert_grep "call-center-admin-x86" ".github/workflows/terraform-apply.yml" "terraform-apply runs on x86 runner"
+# Negative: no workflow should fall back to ubuntu-latest
+TOTAL=$((TOTAL + 1))
+if grep -qE "^\s*runs-on:\s*ubuntu" .github/workflows/*.yml; then
+    FAIL=$((FAIL + 1))
+    FAILED_NAMES+=("workflows must use self-hosted runners (not ubuntu-latest)")
+    echo "not ok $TOTAL - workflows must use self-hosted runners (not ubuntu-latest)"
+else
+    PASS=$((PASS + 1))
+    echo "ok $TOTAL - workflows use self-hosted runners (no ubuntu-latest fallback)"
+fi
+assert_grep "Self-hosted runners" "docs/operations/github-actions-setup.md" "setup docs cover self-hosted runner setup"
+assert_grep "call-center-admin-claude-arm" "docs/operations/github-actions-setup.md" "setup docs document claude-arm runner"

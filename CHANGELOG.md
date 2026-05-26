@@ -21,6 +21,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### Changed
 - `CLAUDE.md` / `README.md` / `docs/onboarding.md`: branch workflow becomes mandatory (no direct `main` push). PR triggers automated Claude review + CI + plan. Merge to main triggers `dev` apply. stg/prd require manual workflow_dispatch + environment reviewer approval.
+- All workflows now target **self-hosted runner labels** (aws-fsi-demo convention): `pr-review.yml` → `call-center-admin-claude-arm`, `ci.yml` → `call-center-admin-arm`, `terraform-{plan,apply}.yml` → `call-center-admin-x86`. `docs/operations/github-actions-setup.md` §2.5 adds the runner setup procedure (EC2 + IAM instance profile + GitHub runner registration + per-runner pre-install matrix). `pr-review.yml` no longer eagerly `npm install -g`s the CLI; it checks for `claude` and falls back to install only if the pre-install drifted.
 
 ### Phase 1 progress (PR1 – PR6 complete)
 - **PR1**: project bootstrap + `src/lib/taxonomy.py` xlsx → 213-node taxonomy parser + `scripts/parse_taxonomy.py` CLI + 8 tests
@@ -58,6 +59,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ### 변경됨
 - `CLAUDE.md` / `README.md` / `docs/onboarding.md` — 브랜치 워크플로우 의무화 (main 직접 push 금지). PR이 자동 Claude 리뷰 + CI + plan 트리거. main 머지 시 `dev` apply. stg/prd 는 workflow_dispatch + environment reviewer 승인.
+- 모든 워크플로우가 **self-hosted runner 라벨** 사용 (aws-fsi-demo 컨벤션): `pr-review.yml` → `call-center-admin-claude-arm`, `ci.yml` → `call-center-admin-arm`, `terraform-{plan,apply}.yml` → `call-center-admin-x86`. `docs/operations/github-actions-setup.md` §2.5 에 러너 셋업 절차 (EC2 + IAM Instance Profile + GitHub runner 등록 + 러너별 pre-install 매트릭스) 추가. `pr-review.yml` 은 `npm install -g` 를 매번 실행하지 않고 pre-install 된 `claude` CLI 가 있는지 체크 후 fallback 만 수행.
 
 ### Phase 1 진행 상황 (PR1 ~ PR6 완료)
 - **PR1**: 프로젝트 부트스트랩 + `src/lib/taxonomy.py` xlsx → 213 노드 분류 파서 + `scripts/parse_taxonomy.py` CLI + 8 테스트
