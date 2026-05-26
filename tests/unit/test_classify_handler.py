@@ -1,4 +1,5 @@
 """Classify Lambda handler test with mocked Bedrock + mocked S3."""
+
 import json
 import os
 from unittest.mock import MagicMock, patch
@@ -29,8 +30,14 @@ def test_classify_returns_structured_result(aws_env) -> None:
     body = json.dumps(
         {
             "대": {"code": "CS_CENTER_CONSULT_TYPE_PAY_NONEY", "name": "페이머니"},
-            "중": {"code": "CS_CENTER_CONSULT_TYPE_PAY_NONEY_CHARGE_WITHDRAWAL", "name": "충전/출금"},
-            "소": {"code": "CS_CENTER_CONSULT_TYPE_PAY_NONEY_CHARGE_WITHDRAWAL_CHARGE_DELAY", "name": "충전 지연/오류"},
+            "중": {
+                "code": "CS_CENTER_CONSULT_TYPE_PAY_NONEY_CHARGE_WITHDRAWAL",
+                "name": "충전/출금",
+            },
+            "소": {
+                "code": "CS_CENTER_CONSULT_TYPE_PAY_NONEY_CHARGE_WITHDRAWAL_CHARGE_DELAY",
+                "name": "충전 지연/오류",
+            },
             "confidence": 0.91,
             "reason": "고객이 충전 오류를 호소함",
             "alternativesConsidered": [],

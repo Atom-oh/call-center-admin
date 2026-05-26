@@ -1,4 +1,5 @@
 """Phase 3에서 ML 모델 교체 가능하도록 한 어댑터 추상."""
+
 from __future__ import annotations
 
 from typing import Protocol

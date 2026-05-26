@@ -1,4 +1,5 @@
 """Bedrock 응답 JSON 검증/파싱 단위 테스트."""
+
 import pytest
 
 from lib.output_schema import ClassificationResult, ValidationError, parse_and_validate

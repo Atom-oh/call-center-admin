@@ -8,11 +8,13 @@ xlsx 컬럼 구조 (1-indexed):
   F: 내용 (사용 안 함)
   G: v4 description (LLM 프롬프트에 사용)
 """
+
 from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import openpyxl
 
@@ -42,10 +44,21 @@ def parse_xlsx(path: Path) -> list[TaxonomyNode]:
     current_l1: TaxonomyNode | None = None
     current_l2: TaxonomyNode | None = None
 
-    # row 3부터 실제 데이터 시작 (row 1-2는 헤더)
+    # row 3부터 실제 데이터 시작 (row 1-2는 헤더).
+    # openpyxl 셀 값은 str|bool|float|datetime|... 의 union — 본 시트는 텍스트 셀만 사용하므로
+    # str | None 으로 좁힌다 (실제 데이터 invariant).
+    def _as_str(v: Any) -> str | None:
+        if v is None:
+            return None
+        return str(v)
+
     for row in ws.iter_rows(min_row=3, max_col=8, values_only=True):
-        _, y1, y2, y3, code, _content, desc, _glyphs = row
-        desc_str = (desc or "").strip() if desc else ""
+        _, y1_v, y2_v, y3_v, code_v, _content, desc_v, _glyphs = row
+        y1 = _as_str(y1_v)
+        y2 = _as_str(y2_v)
+        y3 = _as_str(y3_v)
+        code = _as_str(code_v)
+        desc_str = (_as_str(desc_v) or "").strip()
 
         if y1:
             node = TaxonomyNode(name=y1.strip(), code=code, description=desc_str, level=1)
@@ -67,9 +80,7 @@ def parse_xlsx(path: Path) -> list[TaxonomyNode]:
             nodes.append(node)
         elif y3:
             assert current_l2 is not None, "소분류 before any 중분류"
-            inherited = current_l2.description or (
-                current_l1.description if current_l1 else ""
-            )
+            inherited = current_l2.description or (current_l1.description if current_l1 else "")
             node = TaxonomyNode(
                 name=y3.strip(),
                 code=code,
@@ -119,7 +130,8 @@ def to_json(nodes: list[TaxonomyNode]) -> str:
     - `effective_description`: 부모 상속까지 적용한 최종 값 (LLM 프롬프트와 동일)
     - `children_codes`: code가 None인 자식은 제외하여 다운스트림이 None을 다룰 필요 없도록 함
     """
-    def encode(n: TaxonomyNode) -> dict:
+
+    def encode(n: TaxonomyNode) -> dict[str, Any]:
         return {
             "name": n.name,
             "code": n.code,

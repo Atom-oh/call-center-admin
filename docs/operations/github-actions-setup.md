@@ -29,41 +29,9 @@ aws iam create-open-id-connect-provider \
 
 세 개 role 필요. 각 role 의 trust policy 는 본 저장소(`Atom-oh/call-center-admin`) 의 특정 이벤트만 허용.
 
-### 2.1 `callcenter-github-actions-pr-review`
+### 2.1 ~~`callcenter-github-actions-pr-review`~~ (제거됨)
 
-목적: PR 리뷰 워크플로우의 Bedrock InvokeModel.
-
-**Trust policy**:
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Principal": { "Federated": "arn:aws:iam::ACCOUNT:oidc-provider/token.actions.githubusercontent.com" },
-    "Action": "sts:AssumeRoleWithWebIdentity",
-    "Condition": {
-      "StringEquals": {
-        "token.actions.githubusercontent.com:aud": "sts.amazonaws.com"
-      },
-      "StringLike": {
-        "token.actions.githubusercontent.com:sub": "repo:Atom-oh/call-center-admin:pull_request"
-      }
-    }
-  }]
-}
-```
-
-**Permission policy** (inline):
-```json
-{
-  "Version": "2012-10-17",
-  "Statement": [{
-    "Effect": "Allow",
-    "Action": ["bedrock:InvokeModel"],
-    "Resource": "arn:aws:bedrock:ap-northeast-2::foundation-model/anthropic.claude-opus-4-*"
-  }]
-}
-```
+> **Updated**: PR review 워크플로우는 **별도 OIDC role 을 사용하지 않습니다**. aws-fsi-demo 의 검증된 패턴을 따라 self-hosted 러너 (`call-center-admin-claude-arm`) 의 **IAM Instance Profile** 이 직접 Bedrock 을 호출합니다. §2.5 의 `callcenter-runner-instance` Instance Profile 에 Bedrock 권한이 부여되어 있어야 하며, 본 OIDC role 은 더 이상 필요 없습니다.
 
 ### 2.2 `callcenter-github-actions-tf-plan`
 
@@ -148,7 +116,9 @@ stg / prd 는 `sub` 의 `environment:dev` 를 `environment:stg` / `environment:p
 
 1. **EC2 인스턴스 부팅** — Amazon Linux 2023 ARM/x86 기반. EBS gp3 30GB. SSM Agent 활성 (콘솔 접근 + patching).
 2. **IAM Instance Profile** 부여 — `callcenter-runner-instance` role. 권한:
-   - `bedrock:InvokeModel` (claude-arm 만; `anthropic.claude-opus-4-*` ARN 패턴)
+   - `bedrock:InvokeModel` (claude-arm 만):
+     - `arn:aws:bedrock:ap-northeast-2::foundation-model/anthropic.claude-opus-4-*` (기본 모델 ARN)
+     - `arn:aws:bedrock:ap-northeast-2:ACCOUNT:inference-profile/apac.anthropic.claude-opus-4-*` (cross-region inference profile)
    - `s3:GetObject` on tfstate 버킷 (x86 만)
    - `ssm:UpdateInstanceInformation` (모든 러너, SSM 관리용)
 3. **GitHub Actions Runner 등록** — `gh actions-runner` 또는 Terraform `aws_codebuild` / `ec2-github-runner` 모듈:
@@ -175,15 +145,25 @@ stg / prd 는 `sub` 의 `environment:dev` 를 `environment:stg` / `environment:p
 
 ### Bedrock 호출 (claude-arm 러너)
 
-`pr-review.yml` 의 `claude --print --output-format=json` 호출은 `CLAUDE_CODE_USE_BEDROCK=1` 환경변수에 따라 Anthropic API 대신 Bedrock 을 사용한다. **러너 IAM Instance Profile** 만으로도 동작하지만, 워크플로우는 명시적으로 OIDC role (`callcenter-github-actions-pr-review`) 을 assume 하여 호출함. 두 권한 중 하나라도 `bedrock:InvokeModel` 을 가지면 충분.
+`pr-review.yml` 의 `claude -p ... --output-format text` 호출은 다음 env 변수로 Bedrock 백엔드를 사용한다:
 
-## 3. GitHub Secrets (organization 또는 repo level)
+- `CLAUDE_CODE_USE_BEDROCK=1`
+- `ANTHROPIC_MODEL=apac.anthropic.claude-opus-4-7-20260101-v1:0` (Asia Pacific cross-region inference profile)
+- `ANTHROPIC_BEDROCK_BASE_URL=https://bedrock-runtime.ap-northeast-2.amazonaws.com`
 
-| Secret | 용도 | 권장 scope |
-|--------|------|-----------|
+권한은 **러너 IAM Instance Profile** 의 `bedrock:InvokeModel` 만으로 충분 (OIDC role 불필요). aws-fsi-demo 와 동일 패턴 — 워크플로우가 `aws-actions/configure-aws-credentials` 를 호출하지 않으므로 boto3 / claude CLI 가 EC2 Instance Metadata Service 에서 자동으로 자격을 가져온다.
+
+## 3. GitHub Variables (organization 또는 repo level)
+
+| Variable | 용도 | 권장 scope |
+|----------|------|-----------|
 | `AWS_ACCOUNT_ID` | OIDC role ARN 조립용 | repo |
 
+> **Secret 이 아닌 Variable 로 등록** 합니다 (계정 번호는 credential-grade 가 아니며, 워크플로우의 `if:` 조건에서 `vars.AWS_ACCOUNT_ID != ''` 으로 graceful gate 적용을 위해 `vars` context 가 필요). GitHub UI 에서 Settings → Secrets and variables → Actions → **Variables 탭** 에서 추가.
+>
 > 본 셋업은 정적 AWS 키를 사용하지 않는다. 모든 권한은 OIDC role 로만 부여된다.
+>
+> **셋업 전 동작**: 모든 워크플로우 job 에 `if: vars.AWS_ACCOUNT_ID != ''` 가 있어 변수 미설정 시 graceful skip 한다. 셋업 완료 후부터 실제 실행.
 
 > Slack webhook 같은 운영 알림용 secret 은 PR9에서 `secretsmanager` 로 옮기고 GH secret 사용 안 함.
 

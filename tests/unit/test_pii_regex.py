@@ -1,5 +1,6 @@
 """PII 정규식 마스킹 단위 테스트."""
-from lib.pii_regex import MASK_PHONE, MASK_ACCOUNT, MASK_RRN, MASK_CARD, mask
+
+from lib.pii_regex import MASK_ACCOUNT, MASK_CARD, MASK_PHONE, MASK_RRN, mask
 
 
 def test_mask_phone_with_dashes() -> None:

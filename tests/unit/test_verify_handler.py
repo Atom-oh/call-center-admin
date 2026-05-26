@@ -3,6 +3,7 @@
 IMPORTANT: handler를 절대 모듈 스코프에서 import 하지 마라. 각 테스트가 env 픽스처
 적용 후 함수 내부에서 import 해야 sys.modules.pop 가 적용된다.
 """
+
 import json
 import sys
 from unittest.mock import MagicMock, patch
@@ -70,9 +71,10 @@ def test_agreement_marks_auto_confirmed(env) -> None:
     fake = MagicMock()
     fake.converse.return_value = _fake_bedrock_response(PRIMARY_CODES, 0.9)
 
-    with patch("lib.bedrock_client.boto3.client", return_value=fake), patch(
-        "lambdas.verify.handler._s3"
-    ) as fake_s3:
+    with (
+        patch("lib.bedrock_client.boto3.client", return_value=fake),
+        patch("lambdas.verify.handler._s3") as fake_s3,
+    ):
         fake_s3.get_object.return_value = {"Body": MagicMock(read=lambda: b"agent: hi")}
         from lambdas.verify.handler import handler
 
@@ -90,9 +92,10 @@ def test_disagreement_marks_hitl_pending(env) -> None:
     fake = MagicMock()
     fake.converse.return_value = _fake_bedrock_response(DIFFERENT_CODES, 0.7)
 
-    with patch("lib.bedrock_client.boto3.client", return_value=fake), patch(
-        "lambdas.verify.handler._s3"
-    ) as fake_s3:
+    with (
+        patch("lib.bedrock_client.boto3.client", return_value=fake),
+        patch("lambdas.verify.handler._s3") as fake_s3,
+    ):
         fake_s3.get_object.return_value = {"Body": MagicMock(read=lambda: b"agent: hi")}
         from lambdas.verify.handler import handler
 
@@ -105,9 +108,10 @@ def test_verify_includes_secondary_result_in_output(env) -> None:
     """verify 결과 자체도 event에 포함되어 persist 단계가 modelPath / 비교 분석 활용 가능."""
     fake = MagicMock()
     fake.converse.return_value = _fake_bedrock_response(PRIMARY_CODES, 0.85)
-    with patch("lib.bedrock_client.boto3.client", return_value=fake), patch(
-        "lambdas.verify.handler._s3"
-    ) as fake_s3:
+    with (
+        patch("lib.bedrock_client.boto3.client", return_value=fake),
+        patch("lambdas.verify.handler._s3") as fake_s3,
+    ):
         fake_s3.get_object.return_value = {"Body": MagicMock(read=lambda: b"agent: hi")}
         from lambdas.verify.handler import handler
 

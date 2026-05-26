@@ -1,7 +1,9 @@
 """Bedrock Converse 호출 래퍼 (prompt caching 포함)."""
+
 from __future__ import annotations
 
 import os
+from typing import Any
 
 import boto3
 
@@ -24,14 +26,18 @@ class BedrockAdapter:
         self._client = boto3.client("bedrock-runtime", region_name=_DEFAULT_REGION)
 
     def classify(self, masked_transcript: str) -> ClassificationResult:
-        system = []
+        # Bedrock Converse system blocks: text + cachePoint 항목이 같은 list에 섞임.
+        # boto3-stubs 의 SystemContentBlockTypeDef 는 아직 cachePoint 를 명시적으로
+        # 정의하지 않으므로 strict mypy 회피용 Any 캐스트. lib.bedrock_client 모듈은
+        # pyproject.toml [tool.mypy.overrides] 에서 일부 strict 완화 적용.
+        system: list[dict[str, Any]] = []
         for block in self.bundle.system_blocks:
             system.append({"text": block})
             system.append({"cachePoint": {"type": "default"}})
 
         resp = self._client.converse(
             modelId=self.model_id,
-            system=system,
+            system=system,  # type: ignore[arg-type]  # cachePoint not in stubs yet
             messages=[
                 {
                     "role": "user",

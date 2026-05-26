@@ -11,12 +11,14 @@ Output (additions):
   status                : "confirmed" | "hitl-pending"
   modelPath             : [primary modelId, verify modelId]
 """
+
 from __future__ import annotations
 
 import dataclasses
 import os
 import sys
 from pathlib import Path
+from typing import Any
 
 # Lambda zip 루트 = /var/task/, 그 안에 lib/ + lambdas/ + prompts/.
 # TODO(phase2): lib/ + prompts/ 를 Lambda Layer로 분리.
@@ -37,7 +39,7 @@ _ADAPTER = BedrockAdapter(model_id=_VERIFY_MODEL_ID, bundle=_BUNDLE)
 _s3 = boto3.client("s3")
 
 
-def _assert_primary_shape(primary: dict) -> None:
+def _assert_primary_shape(primary: dict[str, Any]) -> None:
     """Fail loudly with a clear message if classify Lambda's output schema drifts.
 
     Without this, a missing key surfaces as a raw KeyError mid-handler, after we've
@@ -45,17 +47,21 @@ def _assert_primary_shape(primary: dict) -> None:
     """
     for k in ("대", "중", "소"):
         if not isinstance(primary.get(k), dict) or "code" not in primary[k]:
-            raise ValueError(f"primary classification missing {k}.code — classify Lambda output schema drift?")
+            raise ValueError(
+                f"primary classification missing {k}.code — classify Lambda output schema drift?"
+            )
 
 
-def handler(event: dict, _ctx) -> dict:
+def handler(event: dict[str, Any], _ctx: Any) -> dict[str, Any]:
     # Hard-fail if classify Lambda did not populate modelId. verify must never
     # run before classify, so this is a contract violation worth surfacing.
     primary_model_id = event["modelId"]
     primary = event["classification"]
     _assert_primary_shape(primary)
 
-    masked = _s3.get_object(Bucket=event["maskedBucket"], Key=event["maskedKey"])["Body"].read().decode()
+    masked = (
+        _s3.get_object(Bucket=event["maskedBucket"], Key=event["maskedKey"])["Body"].read().decode()
+    )
     secondary = _ADAPTER.classify(masked)
 
     same = (
