@@ -1,1 +1,2 @@
-# boto3 is provided by Lambda runtime, no pin needed
+# DO NOT pin boto3 — use the Lambda runtime version to keep cold-start zip small.
+# All other deps come from src/lib/ which is staged into the zip by Terraform.

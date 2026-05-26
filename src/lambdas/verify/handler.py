@@ -37,10 +37,26 @@ _ADAPTER = BedrockAdapter(model_id=_VERIFY_MODEL_ID, bundle=_BUNDLE)
 _s3 = boto3.client("s3")
 
 
+def _assert_primary_shape(primary: dict) -> None:
+    """Fail loudly with a clear message if classify Lambda's output schema drifts.
+
+    Without this, a missing key surfaces as a raw KeyError mid-handler, after we've
+    already paid S3 GET + Bedrock invoke cost.
+    """
+    for k in ("대", "중", "소"):
+        if not isinstance(primary.get(k), dict) or "code" not in primary[k]:
+            raise ValueError(f"primary classification missing {k}.code — classify Lambda output schema drift?")
+
+
 def handler(event: dict, _ctx) -> dict:
+    # Hard-fail if classify Lambda did not populate modelId. verify must never
+    # run before classify, so this is a contract violation worth surfacing.
+    primary_model_id = event["modelId"]
+    primary = event["classification"]
+    _assert_primary_shape(primary)
+
     masked = _s3.get_object(Bucket=event["maskedBucket"], Key=event["maskedKey"])["Body"].read().decode()
     secondary = _ADAPTER.classify(masked)
-    primary = event["classification"]
 
     same = (
         primary["대"]["code"] == secondary.대.code
@@ -55,7 +71,9 @@ def handler(event: dict, _ctx) -> dict:
         verified = "hitl-pending"
         status = "hitl-pending"
 
-    emit("classification.verifyTriggered", 1.0, agreement=str(same))
+    # "agree" / "disagree" reads more naturally in CloudWatch Insights than
+    # str(True) / str(False).
+    emit("classification.verifyTriggered", 1.0, agreement="agree" if same else "disagree")
 
     return {
         **event,
@@ -63,5 +81,5 @@ def handler(event: dict, _ctx) -> dict:
         "verifyResult": dataclasses.asdict(secondary),
         "verified": verified,
         "status": status,
-        "modelPath": [event.get("modelId"), _VERIFY_MODEL_ID],
+        "modelPath": [primary_model_id, _VERIFY_MODEL_ID],
     }

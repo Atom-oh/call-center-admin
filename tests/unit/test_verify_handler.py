@@ -1,7 +1,9 @@
-"""Verify Lambda: Sonnet으로 1차 결과 검증."""
-import importlib
+"""Verify Lambda: Sonnet으로 1차 결과 검증.
+
+IMPORTANT: handler를 절대 모듈 스코프에서 import 하지 마라. 각 테스트가 env 픽스처
+적용 후 함수 내부에서 import 해야 sys.modules.pop 가 적용된다.
+"""
 import json
-import os
 import sys
 from unittest.mock import MagicMock, patch
 
