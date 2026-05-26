@@ -25,3 +25,7 @@ output "classify_arn" { value = module.classify_pipeline.classify_arn }
 output "classify_name" { value = module.classify_pipeline.classify_name }
 output "verify_arn" { value = module.classify_pipeline.verify_arn }
 output "verify_name" { value = module.classify_pipeline.verify_name }
+output "persist_arn" { value = module.classify_pipeline.persist_arn }
+output "persist_name" { value = module.classify_pipeline.persist_name }
+output "sfn_arn" { value = module.classify_pipeline.sfn_arn }
+output "sfn_name" { value = module.classify_pipeline.sfn_name }
