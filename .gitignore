@@ -23,6 +23,9 @@ build/
 .terraformrc
 terraform.rc
 
+# Lambda 패키징 산출물
+infra/modules/*/build/
+
 # AWS / SAM
 .aws-sam/
 
