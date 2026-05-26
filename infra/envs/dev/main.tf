@@ -20,6 +20,14 @@ module "storage" {
   vpc_id = module.shared.vpc_id
 }
 
+module "analytics" {
+  source               = "../../modules/analytics"
+  env                  = var.env
+  bucket_analytics_arn = module.storage.bucket_analytics_arn
+  bucket_analytics_id  = module.storage.bucket_analytics_id
+  kms_analytics_arn    = module.storage.kms_analytics_arn
+}
+
 module "classify_pipeline" {
   source = "../../modules/classify-pipeline"
 
@@ -35,6 +43,6 @@ module "classify_pipeline" {
   kms_ddb_arn        = module.storage.kms_ddb_arn
   classify_dlq_arn   = module.storage.classify_dlq_arn
   persist_dlq_arn    = module.storage.persist_dlq_arn
-  # PR7 fills this with the Firehose delivery stream name.
-  firehose_name = ""
+  firehose_name      = module.analytics.firehose_name
+  firehose_arn       = module.analytics.firehose_arn
 }
