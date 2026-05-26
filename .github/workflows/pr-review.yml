@@ -1,0 +1,142 @@
+name: AI Code Review
+
+# PR마다 Claude (Bedrock 호스팅)이 변경 사항을 자동 리뷰하여 PR 코멘트로 게시합니다.
+# aws-fsi-demo의 동일 패턴을 따르되, call-center-admin 의 컨벤션 (CLAUDE.md 의 룰들)을
+# 리뷰 기준으로 사용합니다.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened]
+
+# fork 가 아닌 본 저장소에서 올라온 PR만 (pull_request_target 의 보안 함정 방지)
+jobs:
+  review:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: call-center-admin-claude-arm
+    concurrency:
+      group: pr-review-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    permissions:
+      pull-requests: write
+      contents: read
+      id-token: write    # OIDC for Bedrock InvokeModel
+    env:
+      AWS_REGION: ap-northeast-2
+      CLAUDE_CODE_USE_BEDROCK: 1
+      ANTHROPIC_MODEL: anthropic.claude-opus-4-7-20260101-v1:0
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/callcenter-github-actions-pr-review
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify Claude Code CLI present (pre-installed on runner)
+        # call-center-admin-claude-arm 러너에는 @anthropic-ai/claude-code 가 pre-install 되어 있어야 한다.
+        # `docs/operations/github-actions-setup.md` 의 "Self-hosted runner setup" 섹션 참조.
+        run: |
+          if ! command -v claude >/dev/null 2>&1; then
+            echo "::warning::claude CLI not found on runner, falling back to npm global install"
+            npm install -g @anthropic-ai/claude-code
+          fi
+          claude --version
+
+      - name: Get PR diff (with project-specific filters)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          # Filter out generated artifacts / lockfiles / Lambda zip build dirs.
+          # Without this filter, a taxonomy_tree.json regeneration (~128KB) or a
+          # Terraform staging build dir would dominate the diff and crowd out the
+          # real review surface.
+          gh pr diff "$PR_NUMBER" > /tmp/pr-diff-raw.txt
+          awk '
+            /^diff --git/ {
+              path = substr($3, 3)
+              skip = (path ~ /^src\/prompts\/v[0-9.]+\/taxonomy_tree\.(json|md)$/) ||
+                     (path ~ /^infra\/modules\/[^\/]+\/build\//) ||
+                     (path ~ /(^|\/)package-lock\.json$/) ||
+                     (path ~ /(^|\/)yarn\.lock$/) ||
+                     (path ~ /(^|\/)\.coverage$/) ||
+                     (path ~ /\.terraform\.lock\.hcl$/)
+            }
+            !skip
+          ' /tmp/pr-diff-raw.txt > /tmp/pr-diff.txt
+          RAW=$(wc -l < /tmp/pr-diff-raw.txt)
+          TOTAL=$(wc -l < /tmp/pr-diff.txt)
+          echo "total_lines=$TOTAL" >> "$GITHUB_ENV"
+          echo "Diff: $TOTAL lines (raw $RAW, filtered $((RAW - TOTAL)))"
+
+      - name: Review with Claude Code (Bedrock Opus 4.7)
+        env:
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          PR_TITLE: ${{ github.event.pull_request.title }}
+          PR_BODY: ${{ github.event.pull_request.body }}
+        run: |
+          set -euo pipefail
+          MAX_LINES=3000
+          TRUNCATED=""
+          if [ "${total_lines:-0}" -gt "$MAX_LINES" ]; then
+            TRUNCATED="WARNING: Diff was ${total_lines} lines; only the first ${MAX_LINES} were reviewed. Remaining changes were skipped."
+          fi
+          head -"$MAX_LINES" /tmp/pr-diff.txt > /tmp/pr-diff-truncated.txt
+
+          cat <<PROMPT_EOF > /tmp/prompt.txt
+          You are reviewing PR #${PR_NUMBER}: ${PR_TITLE}
+          ${TRUNCATED}
+
+          PR body:
+          ${PR_BODY:-(empty)}
+
+          Read CLAUDE.md and docs/architecture.md for project conventions. Then review the diff below.
+
+          Project-specific patterns this reviewer MUST check:
+            1. xlsx 분류 코드 (NONEY, PAYNENT) 보존 — "fix"가 들어왔으면 critical
+            2. 한글 boundary 정규식 (\b 대신 (?<!\d)/(?!\d))
+            3. Lambda module-level adapter 캐시 + sys.path.insert
+            4. Terraform: KMS Resource scope, S3 lifecycle filter {}, GSI name/attr 일치
+            5. Bedrock Converse "cachePoint" 형식
+            6. PII sweep (reason / why_rejected 에 정규식 미적용 = critical)
+            7. confidence 타입 (bool 거부, range 0..1)
+            8. SFN ResultPath/OutputPath 데이터 흐름 보존
+            9. **새 ADR 작성 시 Mermaid 다이어그램 필수** (docs/decisions/.template.md 룰)
+
+          Output format (Markdown):
+          1. **Summary** — 2-3 sentence description of what this PR does.
+          2. **Issues** — bugs/security/logic errors. Tag each [CRITICAL] / [IMPORTANT] / [MINOR]. confidence 75+ only.
+          3. **Suggestions** — improvements (optional).
+          4. **Verdict** — LGTM | Changes Requested | Approve with comments
+
+          Be concrete. Reference file:line. If no issues, say so plainly.
+          PROMPT_EOF
+
+          # Run Claude Code with Bedrock backend, pipe the diff as stdin
+          claude --print --output-format=json \
+            --append-system-prompt "$(cat /tmp/prompt.txt)" \
+            < /tmp/pr-diff-truncated.txt > /tmp/review.json
+
+          # Extract markdown review from response
+          jq -r '.result' /tmp/review.json > /tmp/review.md
+          echo "Review length: $(wc -l < /tmp/review.md) lines"
+
+      - name: Post review as PR comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: |
+          # Prepend a header so the comment is easy to identify in the PR thread
+          {
+            echo "## 🤖 Claude Code 자동 리뷰 (Opus 4.7 on Bedrock)"
+            echo ""
+            cat /tmp/review.md
+            echo ""
+            echo "---"
+            echo "_Triggered by commit \`${{ github.event.pull_request.head.sha }}\` · workflow: \`.github/workflows/pr-review.yml\`_"
+          } > /tmp/comment.md
+          gh pr comment "$PR_NUMBER" --body-file /tmp/comment.md

@@ -105,10 +105,18 @@ This is an internal project. The contribution workflow is:
 
 1. Read `CLAUDE.md` for conventions (Python 3.12, ruff, mypy strict, Lambda packaging, KMS scoping, etc.)
 2. Pick a remaining PR from `docs/superpowers/plans/2026-05-22-phase1-callcenter-classification.md`
-3. Follow `superpowers:subagent-driven-development` skill: implementer → spec reviewer → code-quality reviewer
-4. Every ADR you create must include a Mermaid architecture flow diagram (`docs/decisions/.template.md`)
-5. Commit with conventional prefix: `feat(scope): …`, `fix(scope): …`, etc.
-6. Tests must pass; `terraform fmt -check` and `validate` must be clean.
+3. **Create a feature branch (`feat/...`, `fix/...`)** — never push directly to `main`
+4. Follow `superpowers:subagent-driven-development` skill: implementer → spec reviewer → code-quality reviewer
+5. Every ADR you create must include a Mermaid architecture flow diagram (`docs/decisions/.template.md`)
+6. Commit with conventional prefix: `feat(scope): …`, `fix(scope): …`, etc.
+7. Tests must pass; `terraform fmt -check` and `validate` must be clean.
+8. Open a PR. The following automation runs automatically:
+   - **AI Review** — Claude Opus 4.7 on Bedrock posts a structured review comment
+   - **CI** — ruff + mypy + pytest + terraform fmt/validate + tfsec
+   - **Terraform Plan** — `infra/**` changes show a `terraform plan` comment scoped to `dev`
+9. After a human reviewer approves and CI passes, merge to `main`. The terraform-apply workflow runs `dev` automatically. `stg`/`prd` require manual `workflow_dispatch` with environment protection rules.
+
+See `docs/operations/github-actions-setup.md` for the one-time OIDC/Environment setup.
 
 ## License
 
@@ -216,10 +224,18 @@ TDD 컨벤션, Lambda handler 테스트 패턴, 골든셋 가이드는 `tests/CL
 
 1. `CLAUDE.md` 의 컨벤션 (Python 3.12, ruff, mypy strict, Lambda 패키징, KMS scoping 등) 숙지
 2. `docs/superpowers/plans/2026-05-22-phase1-callcenter-classification.md` 에서 잔여 PR 선택
-3. `superpowers:subagent-driven-development` 스킬 사용: implementer → spec reviewer → code-quality reviewer
-4. 새 ADR 작성 시 **Mermaid 아키텍처 흐름도 필수** (`docs/decisions/.template.md` 참고)
-5. Conventional commit prefix 사용: `feat(scope): …`, `fix(scope): …` 등
-6. 테스트 통과 + `terraform fmt -check` + `validate` clean 필수
+3. **feature branch 생성** (`feat/...`, `fix/...`) — `main` 직접 push 금지
+4. `superpowers:subagent-driven-development` 스킬 사용: implementer → spec reviewer → code-quality reviewer
+5. 새 ADR 작성 시 **Mermaid 아키텍처 흐름도 필수** (`docs/decisions/.template.md` 참고)
+6. Conventional commit prefix 사용: `feat(scope): …`, `fix(scope): …` 등
+7. 테스트 통과 + `terraform fmt -check` + `validate` clean 필수
+8. PR 올리면 자동 실행:
+   - **AI 리뷰** — Claude Opus 4.7 (Bedrock) 가 CLAUDE.md 룰에 맞춰 리뷰 코멘트 게시
+   - **CI** — ruff + mypy + pytest + terraform fmt/validate + tfsec
+   - **Terraform Plan** — `infra/**` 변경 시 `dev` plan 결과를 PR 코멘트로
+9. 사람 리뷰어 승인 + CI 통과 후 `main` 머지. `dev` 자동 apply. `stg`/`prd` 는 `workflow_dispatch` 와 환경 보호 룰로 분리.
+
+1회성 OIDC / Environment 셋업: `docs/operations/github-actions-setup.md` 참고.
 
 ## 라이선스
 
