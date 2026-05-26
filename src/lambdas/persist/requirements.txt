@@ -1,0 +1,1 @@
+# DO NOT pin boto3 — use the Lambda runtime version to keep cold-start zip small.
