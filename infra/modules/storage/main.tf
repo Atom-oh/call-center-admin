@@ -96,6 +96,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "raw" {
   rule {
     id     = "tiering"
     status = "Enabled"
+    filter {} # apply to all objects (AWS provider 6.x requires explicit filter/prefix)
     transition {
       days          = 90
       storage_class = "GLACIER_IR"
@@ -103,6 +104,13 @@ resource "aws_s3_bucket_lifecycle_configuration" "raw" {
     transition {
       days          = 365
       storage_class = "DEEP_ARCHIVE"
+    }
+    noncurrent_version_transition {
+      noncurrent_days = 90
+      storage_class   = "GLACIER_IR"
+    }
+    noncurrent_version_expiration {
+      noncurrent_days = 365
     }
   }
 }
@@ -112,7 +120,11 @@ resource "aws_s3_bucket_lifecycle_configuration" "masked" {
   rule {
     id     = "delete-after-1y"
     status = "Enabled"
+    filter {} # apply to all objects
     expiration { days = 365 }
+    noncurrent_version_expiration {
+      noncurrent_days = 30 # masked data has no audit need after current version expires
+    }
   }
 }
 
@@ -160,7 +172,11 @@ resource "aws_dynamodb_table" "consult_results" {
   }
 
   global_secondary_index {
-    name            = "category대code-classifiedAt-index"
+    # NOTE: index name aligned with attribute name (`category_대code`).
+    # Renaming after first `terraform apply` requires DDB table replacement,
+    # so fixed in PR2 before any apply. Plan/spec text uses the older
+    # `category대code-...` form — the storage module is the source of truth.
+    name            = "category_대code-classifiedAt-index"
     hash_key        = "category_대code"
     range_key       = "classifiedAt"
     projection_type = "ALL"
