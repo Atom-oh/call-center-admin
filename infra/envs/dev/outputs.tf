@@ -21,3 +21,5 @@ output "persist_dlq_arn" { value = module.storage.persist_dlq_arn }
 output "persist_dlq_url" { value = module.storage.persist_dlq_url }
 output "pii_guard_arn" { value = module.classify_pipeline.pii_guard_arn }
 output "pii_guard_name" { value = module.classify_pipeline.pii_guard_name }
+output "classify_arn" { value = module.classify_pipeline.classify_arn }
+output "classify_name" { value = module.classify_pipeline.classify_name }

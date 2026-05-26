@@ -1,0 +1,35 @@
+[
+  {
+    "id": "g001",
+    "transcript": "agent: 안녕하세요 카카오페이입니다\ncustomer: 페이머니 충전이 안되는데요\nagent: 어떤 오류가 나오시나요\ncustomer: 그냥 안 됩니다",
+    "expected": {
+      "대code": "CS_CENTER_CONSULT_TYPE_PAY_NONEY",
+      "중code": "CS_CENTER_CONSULT_TYPE_PAY_NONEY_CHARGE_WITHDRAWAL",
+      "소code": "CS_CENTER_CONSULT_TYPE_PAY_NONEY_CHARGE_WITHDRAWAL_CHARGE_DELAY"
+    }
+  },
+  {
+    "id": "g002",
+    "transcript": "PLACEHOLDER — replace with real STT sample, hand-labeled",
+    "expected": {
+      "대code": "TBD",
+      "중code": "TBD",
+      "소code": "TBD"
+    }
+  },
+  {
+    "id": "g003",
+    "transcript": "PLACEHOLDER — replace with real STT sample, hand-labeled",
+    "expected": {"대code": "TBD", "중code": "TBD", "소code": "TBD"}
+  },
+  {
+    "id": "g004",
+    "transcript": "PLACEHOLDER — replace with real STT sample, hand-labeled",
+    "expected": {"대code": "TBD", "중code": "TBD", "소code": "TBD"}
+  },
+  {
+    "id": "g005",
+    "transcript": "PLACEHOLDER — replace with real STT sample, hand-labeled",
+    "expected": {"대code": "TBD", "중code": "TBD", "소code": "TBD"}
+  }
+]
