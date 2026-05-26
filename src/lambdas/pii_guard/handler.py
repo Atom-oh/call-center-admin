@@ -9,6 +9,7 @@ Output:
     "maskedBucket": str, "maskedKey": str,
     "maskStats": {"phone": int, "rrn": int, "account": int, "card": int} }
 """
+
 from __future__ import annotations
 
 import json

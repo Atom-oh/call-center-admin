@@ -1,4 +1,5 @@
 """골든셋에 대해 현재 프롬프트 버전 평가."""
+
 from __future__ import annotations
 
 import argparse
@@ -58,16 +59,20 @@ def main() -> int:
     with args.history.open("a", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
         if write_header:
-            w.writerow(["timestamp", "prompt_version", "model_id", "n", "acc_대", "acc_중", "acc_소"])
-        w.writerow([
-            datetime.now(UTC).isoformat(),
-            "v1.0",
-            args.model_id,
-            total,
-            acc["대"],
-            acc["중"],
-            acc["소"],
-        ])
+            w.writerow(
+                ["timestamp", "prompt_version", "model_id", "n", "acc_대", "acc_중", "acc_소"]
+            )
+        w.writerow(
+            [
+                datetime.now(UTC).isoformat(),
+                "v1.0",
+                args.model_id,
+                total,
+                acc["대"],
+                acc["중"],
+                acc["소"],
+            ]
+        )
 
     if acc["대"] < 0.80:
         print(f"FAIL: 대 accuracy {acc['대']:.2%} < 80%")

@@ -1,4 +1,5 @@
 """Bedrock 응답 JSON 검증/파싱."""
+
 from __future__ import annotations
 
 import json
@@ -75,7 +76,9 @@ def parse_and_validate(raw: str, valid_codes: set[str]) -> ClassificationResult:
     for a in data.get("alternativesConsidered", []):
         if a.get("code") and a["code"] not in valid_codes:
             raise ValidationError(f"unknown code in alternatives: {a['code']}")
-        alternatives.append(Alternative(code=a.get("code", ""), why_rejected=a.get("why_rejected", "")))
+        alternatives.append(
+            Alternative(code=a.get("code", ""), why_rejected=a.get("why_rejected", ""))
+        )
 
     return ClassificationResult(
         대=CategoryLabel(**data["대"]),

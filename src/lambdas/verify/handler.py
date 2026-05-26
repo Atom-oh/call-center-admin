@@ -11,6 +11,7 @@ Output (additions):
   status                : "confirmed" | "hitl-pending"
   modelPath             : [primary modelId, verify modelId]
 """
+
 from __future__ import annotations
 
 import dataclasses
@@ -45,7 +46,9 @@ def _assert_primary_shape(primary: dict) -> None:
     """
     for k in ("대", "중", "소"):
         if not isinstance(primary.get(k), dict) or "code" not in primary[k]:
-            raise ValueError(f"primary classification missing {k}.code — classify Lambda output schema drift?")
+            raise ValueError(
+                f"primary classification missing {k}.code — classify Lambda output schema drift?"
+            )
 
 
 def handler(event: dict, _ctx) -> dict:
@@ -55,7 +58,9 @@ def handler(event: dict, _ctx) -> dict:
     primary = event["classification"]
     _assert_primary_shape(primary)
 
-    masked = _s3.get_object(Bucket=event["maskedBucket"], Key=event["maskedKey"])["Body"].read().decode()
+    masked = (
+        _s3.get_object(Bucket=event["maskedBucket"], Key=event["maskedKey"])["Body"].read().decode()
+    )
     secondary = _ADAPTER.classify(masked)
 
     same = (

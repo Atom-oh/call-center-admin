@@ -8,6 +8,7 @@ xlsx 컬럼 구조 (1-indexed):
   F: 내용 (사용 안 함)
   G: v4 description (LLM 프롬프트에 사용)
 """
+
 from __future__ import annotations
 
 import json
@@ -67,9 +68,7 @@ def parse_xlsx(path: Path) -> list[TaxonomyNode]:
             nodes.append(node)
         elif y3:
             assert current_l2 is not None, "소분류 before any 중분류"
-            inherited = current_l2.description or (
-                current_l1.description if current_l1 else ""
-            )
+            inherited = current_l2.description or (current_l1.description if current_l1 else "")
             node = TaxonomyNode(
                 name=y3.strip(),
                 code=code,
@@ -119,6 +118,7 @@ def to_json(nodes: list[TaxonomyNode]) -> str:
     - `effective_description`: 부모 상속까지 적용한 최종 값 (LLM 프롬프트와 동일)
     - `children_codes`: code가 None인 자식은 제외하여 다운스트림이 None을 다룰 필요 없도록 함
     """
+
     def encode(n: TaxonomyNode) -> dict:
         return {
             "name": n.name,
