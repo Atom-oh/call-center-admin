@@ -41,3 +41,20 @@ def test_handles_markdown_wrapped_json() -> None:
     raw = '```json\n{"대":{"code":"x","name":"x"},"중":{"code":"x","name":"x"},"소":{"code":"x","name":"x"},"confidence":0.7,"reason":"r","alternativesConsidered":[]}\n```'
     result = parse_and_validate(raw, valid_codes={"x"})
     assert result.confidence == 0.7
+
+
+def test_top_level_array_raises_validation_error() -> None:
+    """Bedrock이 JSON 배열/스칼라/null을 반환하면 ValidationError로 surface해야 한다.
+
+    (그렇지 않으면 AttributeError가 raise되어 SFN Catch가 분류 못 함.)
+    """
+    with pytest.raises(ValidationError) as ex:
+        parse_and_validate("[]", valid_codes={"x"})
+    assert "top-level" in str(ex.value).lower()
+
+
+def test_confidence_as_bool_rejected() -> None:
+    """`True`는 isinstance(int, float)를 통과하므로 명시적으로 거부해야 한다."""
+    raw = '{"대":{"code":"x","name":"x"},"중":{"code":"x","name":"x"},"소":{"code":"x","name":"x"},"confidence":true,"reason":"r","alternativesConsidered":[]}'
+    with pytest.raises(ValidationError):
+        parse_and_validate(raw, valid_codes={"x"})

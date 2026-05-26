@@ -47,6 +47,12 @@ def parse_and_validate(raw: str, valid_codes: set[str]) -> ClassificationResult:
     except json.JSONDecodeError as ex:
         raise ValidationError(f"invalid JSON: {ex}") from ex
 
+    # Top-level must be a JSON object — defend against array/scalar/null payloads
+    # (hallucination, prompt-injection recovery). Without this guard, downstream
+    # `data.keys()` raises AttributeError which SFN Catch cannot classify cleanly.
+    if not isinstance(data, dict):
+        raise ValidationError(f"top-level JSON must be object, got {type(data).__name__}")
+
     required = {"대", "중", "소", "confidence", "reason", "alternativesConsidered"}
     missing = required - data.keys()
     if missing:
@@ -60,7 +66,9 @@ def parse_and_validate(raw: str, valid_codes: set[str]) -> ClassificationResult:
             raise ValidationError(f"unknown code in {k}: {node['code']}")
 
     conf = data["confidence"]
-    if not isinstance(conf, (int, float)) or not 0 <= conf <= 1:
+    # Reject bool explicitly — Python treats bool as int subclass so `True` would
+    # otherwise satisfy `isinstance(int, float)` and `0 <= True <= 1`.
+    if isinstance(conf, bool) or not isinstance(conf, (int, float)) or not 0 <= conf <= 1:
         raise ValidationError(f"confidence out of range: {conf}")
 
     alternatives = []

@@ -30,6 +30,11 @@ def _serialize_taxonomy(taxonomy_json: str) -> tuple[str, set[str]]:
     lines: list[str] = []
     codes: set[str] = set()
     for n in nodes:
+        # Guard against taxonomy malformation — PR1 currently emits only 1/2/3
+        # but a future taxonomy change shouldn't crash with IndexError or silently
+        # wrap to the last marker via negative indexing.
+        if not 1 <= n["level"] <= 3:
+            raise ValueError(f"invalid level {n['level']} for node {n.get('code')}")
         if n["code"]:
             codes.add(n["code"])
         marker_idx = n["level"] - 1
