@@ -13,7 +13,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ## [Unreleased]
 
 ### Added
+- **GitHub Actions branch workflow** (`.github/workflows/`): `pr-review.yml` runs Claude Opus 4.7 on Bedrock against every PR and posts a structured review comment (filters out generated taxonomy artifacts + Terraform build dirs, caps diff at 3000 lines). `ci.yml` runs ruff + mypy + pytest with coverage + terraform fmt/validate + tflint + tfsec, with path filters that scope work to changed areas. `terraform-plan.yml` posts a `dev` plan as a PR comment on `infra/**` changes. `terraform-apply.yml` runs on push-to-main (dev auto-apply) and `workflow_dispatch` (stg/prd manual with environment protection).
+- `.github/pull_request_template.md` enforcing the project's checklist (pytest baseline, ruff, mypy, terraform validate, Mermaid for ADRs, impact callouts).
+- `docs/operations/github-actions-setup.md`: one-time OIDC provider creation, 3 IAM role trust policies (pr-review / tf-plan / tf-apply-{dev,stg,prd}), GitHub environment protection rules, branch protection rule, troubleshooting matrix.
+- `tests/structure/test-github-actions.sh` harness checks (4 workflows + PR template + setup docs, including a negative assertion that `terraform-plan` never runs `apply`).
 - Claude Code project scaffold via `/project-init:init-project`: root `CLAUDE.md`, 9 module `CLAUDE.md` files (`src/lib/`, `src/lambdas/{pii_guard,classify,verify,persist}/`, `src/prompts/`, `tests/`, `infra/`), `.claude/` (settings.json with permission allow/deny, 4 hooks, 4 skills, 3 commands, 2 agents), `docs/architecture.md` (bilingual, ASCII diagrams), ADR template with mandatory Mermaid diagram requirement, runbook template, `docs/onboarding.md`, `.mcp.json`, `.env.example`, `.editorconfig`, bilingual `README.md`, this `CHANGELOG.md`.
+
+### Changed
+- `CLAUDE.md` / `README.md` / `docs/onboarding.md`: branch workflow becomes mandatory (no direct `main` push). PR triggers automated Claude review + CI + plan. Merge to main triggers `dev` apply. stg/prd require manual workflow_dispatch + environment reviewer approval.
 
 ### Phase 1 progress (PR1 – PR6 complete)
 - **PR1**: project bootstrap + `src/lib/taxonomy.py` xlsx → 213-node taxonomy parser + `scripts/parse_taxonomy.py` CLI + 8 tests
@@ -43,7 +50,14 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 ## [Unreleased]
 
 ### 추가됨
+- **GitHub Actions 브랜치 워크플로우** (`.github/workflows/`): `pr-review.yml` 가 매 PR마다 Claude Opus 4.7 (Bedrock 호스팅) 으로 변경 사항 리뷰 후 구조화된 코멘트 게시 (생성된 taxonomy 산출물 + Terraform build dir 필터, diff 3000줄 cap). `ci.yml` 이 ruff + mypy + pytest(+coverage) + terraform fmt/validate + tflint + tfsec 실행, 변경 영역 path filter 적용. `terraform-plan.yml` 이 `infra/**` 변경 시 `dev` plan 결과를 PR 코멘트로 게시. `terraform-apply.yml` 이 main 머지 시 dev 자동 apply, stg/prd 는 `workflow_dispatch` + environment 보호 룰로 수동.
+- `.github/pull_request_template.md` — 프로젝트 체크리스트 (pytest baseline, ruff, mypy, terraform validate, ADR Mermaid 의무, 영향도 callout).
+- `docs/operations/github-actions-setup.md` — 1회성 OIDC provider 생성, 3개 IAM role (pr-review / tf-plan / tf-apply-{dev,stg,prd}) trust policy, GitHub environment 보호 룰, branch protection 룰, troubleshooting 매트릭스.
+- `tests/structure/test-github-actions.sh` harness 검증 (워크플로우 4종 + PR template + setup docs, `terraform-plan` 이 `apply` 호출 안 하는 negative 어설션 포함).
 - `/project-init:init-project` 로 Claude Code 프로젝트 스캐폴드 생성: 루트 `CLAUDE.md`, 모듈 `CLAUDE.md` 9개 (`src/lib/`, `src/lambdas/{pii_guard,classify,verify,persist}/`, `src/prompts/`, `tests/`, `infra/`), `.claude/` (allow/deny 권한 정책의 settings.json, hook 4종, skill 4종, command 3종, agent 2종), `docs/architecture.md` (이중언어, ASCII 다이어그램), Mermaid 다이어그램 필수 규칙 명시된 ADR 템플릿, 런북 템플릿, `docs/onboarding.md`, `.mcp.json`, `.env.example`, `.editorconfig`, 이중언어 `README.md`, 본 `CHANGELOG.md`.
+
+### 변경됨
+- `CLAUDE.md` / `README.md` / `docs/onboarding.md` — 브랜치 워크플로우 의무화 (main 직접 push 금지). PR이 자동 Claude 리뷰 + CI + plan 트리거. main 머지 시 `dev` apply. stg/prd 는 workflow_dispatch + environment reviewer 승인.
 
 ### Phase 1 진행 상황 (PR1 ~ PR6 완료)
 - **PR1**: 프로젝트 부트스트랩 + `src/lib/taxonomy.py` xlsx → 213 노드 분류 파서 + `scripts/parse_taxonomy.py` CLI + 8 테스트
