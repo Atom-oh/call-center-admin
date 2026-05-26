@@ -1,0 +1,12 @@
+# False-positive samples for tests/hooks/test-secret-patterns.sh
+# These look suspicious but are legitimate identifiers (S3 ARNs, GitHub URLs, etc.).
+# The secret-scan regex should NOT trigger on these.
+
+# AWS account number in an ARN (looks like an Access Key prefix shape but is shorter)
+arn:aws:s3:::123456789012-bucket-name
+
+# GitHub repo URL (mentions ghp- but is not a token)
+https://github.com/Atom-oh/call-center-admin
+
+# Documentation referencing AWS Access Key (without an actual key)
+"To configure AWS, set your AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY"

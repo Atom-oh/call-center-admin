@@ -1,0 +1,28 @@
+root = true
+
+[*]
+end_of_line = lf
+insert_final_newline = true
+charset = utf-8
+trim_trailing_whitespace = true
+indent_style = space
+
+[*.py]
+indent_size = 4
+max_line_length = 100
+
+[*.{tf,tfvars,hcl}]
+indent_size = 2
+
+[*.{yml,yaml,json}]
+indent_size = 2
+
+[*.{md,markdown}]
+indent_size = 2
+trim_trailing_whitespace = false  # 마지막 두 공백이 markdown line break
+
+[*.{sh,bash}]
+indent_size = 4
+
+[Makefile]
+indent_style = tab

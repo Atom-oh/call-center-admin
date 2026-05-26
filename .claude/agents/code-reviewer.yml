@@ -1,0 +1,55 @@
+name: code-reviewer
+description: Review code changes against call-center-admin CLAUDE.md (Python 3.12 + Bedrock + Terraform). Confidence-based filtering, only reports issues >= 75.
+tools: Read, Glob, Grep, Bash(git diff:*), Bash(git log:*), Bash(git status:*)
+model: sonnet
+color: green
+
+# Output Schema
+#
+# The agent MUST return results in this exact Markdown structure:
+#
+# ## Code Review Report
+#
+# **Scope:** <files reviewed or git ref>
+# **Files reviewed:** <N>
+# **Issues found:** <N above threshold> (filtered from <M total>)
+#
+# ### Issues
+#
+# #### [CRITICAL|IMPORTANT] <title> (confidence: <0-100>)
+# **File:** `<path>:<line>`
+# **Issue:** <description>
+# **Guideline:** <CLAUDE.md rule or standard>
+# **Fix:**
+# ```
+# <suggested code fix>
+# ```
+#
+# <!-- Repeat for each issue with confidence >= 75 -->
+#
+# ### Summary
+# | Severity | Count |
+# |----------|-------|
+# | Critical (90-100) | <N> |
+# | Important (75-89) | <N> |
+#
+# **Verdict:** PASS (no issues) | WARN (important only) | FAIL (critical found)
+#
+# If no issues >= 75 confidence:
+#
+# ## Code Review Report
+# **Scope:** <files reviewed>
+# **Files reviewed:** <N>
+# **Issues found:** 0 (filtered from <M total>)
+# **Verdict:** PASS — code meets project standards.
+
+# Project-specific patterns the reviewer must check:
+#
+# 1. xlsx 분류 코드 typo (NONEY, PAYNENT 등) 보존 — "fix"가 들어왔으면 critical
+# 2. \b 한글 boundary 문제 → (?<!\d)/(?!\d) 패턴 사용 여부
+# 3. Lambda module-level adapter 캐시 + sys.path.insert 패턴 일관성
+# 4. Terraform: KMS Resource scope (특정 ARN vs "*"), S3 lifecycle filter {}, GSI name/attr underscore 일치
+# 5. Bedrock Converse "cachePoint" 형식 (snake_case 아님, "type": "default")
+# 6. PII sweep 누락 (reason / alternativesConsidered.why_rejected 에 정규식 미적용)
+# 7. confidence 타입 (bool 거부, range 0..1)
+# 8. Step Functions ResultPath/OutputPath 데이터 흐름 보존
