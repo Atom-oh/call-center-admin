@@ -1,3 +1,12 @@
+# Bootstrap stack: creates the S3 bucket + DDB lock table that all other
+# call-center-admin terraform stacks (infra/envs/{dev,stg,prd}) use as their
+# remote backend. This stack itself has NO remote backend — local state is
+# the bootstrap chicken-and-egg solution.
+#
+# Driven by Atlantis as a registered project (atlantis.yaml: shared-state).
+# Apply path: open PR touching infra/shared-state/*.tf → atlantis plan →
+# review → atlantis apply -p shared-state → S3 + DDB created.
+
 terraform {
   required_version = ">= 1.6"
   required_providers {

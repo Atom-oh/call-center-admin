@@ -38,6 +38,22 @@ parallel_apply: false
 delete_source_branch_on_merge: false
 
 projects:
+  # Bootstrap: state bucket + DDB lock table. No remote backend (local state).
+  # Must be applied before `dev` can `terraform init` successfully.
+  - name: shared-state
+    dir: infra/shared-state
+    workspace: default
+    terraform_version: v1.9.8
+    autoplan:
+      enabled: true
+      when_modified:
+        - "*.tf"
+        - "../../atlantis.yaml"
+    apply_requirements:
+      - approved
+      - mergeable
+    workflow: callcenter-bootstrap
+
   - name: dev
     dir: infra/envs/dev
     workspace: default
@@ -83,6 +99,19 @@ workflows:
       steps:
         - init:
             extra_args: ["-reconfigure"]
+        - plan
+    apply:
+      steps:
+        - apply
+
+  # shared-state has no remote backend, so `terraform init` does not need
+  # `-reconfigure`. State persists only in the working directory between
+  # plan and apply (Atlantis keeps the workspace per PR). After first apply,
+  # the tfstate file is committed back as an artifact in the Atlantis volume.
+  callcenter-bootstrap:
+    plan:
+      steps:
+        - init
         - plan
     apply:
       steps:
