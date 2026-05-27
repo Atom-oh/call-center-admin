@@ -195,7 +195,7 @@ resource "aws_kinesis_firehose_delivery_stream" "consult" {
     bucket_arn          = var.bucket_analytics_arn
     prefix              = "consult-results/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/"
     error_output_prefix = "consult-results-errors/!{firehose:error-output-type}/year=!{timestamp:yyyy}/month=!{timestamp:MM}/day=!{timestamp:dd}/"
-    buffering_size      = 1
+    buffering_size      = 64
     buffering_interval  = 60
     kms_key_arn         = var.kms_analytics_arn
     compression_format  = "UNCOMPRESSED" # Parquet writer handles internally
