@@ -54,7 +54,6 @@ projects:
         - "../../modules/**/*.tf"
         - "../../../atlantis.yaml"
     apply_requirements:
-      - approved
       - mergeable
 
   # Uncomment when infra/envs/stg exists.
