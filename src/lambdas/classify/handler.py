@@ -15,6 +15,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 import boto3
 
 from lib.bedrock_client import BedrockAdapter
+from lib.metrics import emit
 from lib.prompts import build_prompt_bundle
 
 _MODEL_ID = os.environ["MODEL_ID"]
@@ -31,6 +32,14 @@ def handler(event: dict[str, Any], _ctx: Any) -> dict[str, Any]:
         _s3.get_object(Bucket=event["maskedBucket"], Key=event["maskedKey"])["Body"].read().decode()
     )
     result = _ADAPTER.classify(masked)
+
+    # PR9 / spec §2.1: classify-side EMF. Persist also emits classification.processed
+    # post-DDB, but classify emits here too so a persist-side failure does not lose
+    # the LLM-call signal. ADR-004: 대code dim value is the xlsx code verbatim
+    # (NONEY / PAYNENT / ... must NOT be 'corrected').
+    emit("classify.invoked", 1.0, 대code=result.대.code)
+    emit("classify.confidence", float(result.confidence), unit="None", 대code=result.대.code)
+
     return {
         **event,
         "modelId": _MODEL_ID,
