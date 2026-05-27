@@ -1,5 +1,24 @@
 provider "aws" {
   region = "ap-northeast-2"
+
+  # Atlantis 실행 흐름:
+  #   Atlantis pod (IRSA: AtlantisIRSARole, account 180294183052)
+  #     → AssumeRole DemoPlatformTerraformer (atomoh-main account)
+  #     → 리소스 생성/수정/삭제
+  #
+  # DemoPlatformTerraformer 는 callcenter Lambda/SFN/Bedrock/Glue/Firehose/Athena/S3/DDB/KMS/EventBridge/SQS 등
+  # 모든 리소스 권한을 보유한다 (AWS-Demo-Platform 의 accounts.yaml + IAM 모듈 관리).
+  #
+  # 로컬 dev 환경 (또는 GA OIDC 백업 호출) 에서는 var.terraformer_role_arn 을 빈 문자열로
+  # override 하면 assume_role 블록이 비활성화된다.
+  dynamic "assume_role" {
+    for_each = var.terraformer_role_arn != "" ? [1] : []
+    content {
+      role_arn     = var.terraformer_role_arn
+      session_name = "atlantis-callcenter-${var.env}"
+    }
+  }
+
   default_tags {
     tags = {
       project    = "callcenter-classification"
