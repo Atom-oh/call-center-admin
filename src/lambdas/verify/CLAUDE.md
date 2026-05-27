@@ -15,7 +15,7 @@ Classify Lambda 의 결과 신뢰도가 낮을 때 (`confidence < 0.80`) Step Fu
 ```json
 {
   "...spread of input...",
-  "verifiedBy": "anthropic.claude-sonnet-4-6-20260101-v1:0",
+  "verifiedBy": "apac.apac.anthropic.claude-sonnet-4-6-20260101-v1:0",
   "verifyResult": {...full ClassificationResult from Sonnet...},
   "verified": "auto-confirmed" | "hitl-pending",
   "status": "confirmed" | "hitl-pending",
@@ -25,7 +25,7 @@ Classify Lambda 의 결과 신뢰도가 낮을 때 (`confidence < 0.80`) Step Fu
 
 ## Env vars
 
-- `VERIFY_MODEL_ID` — `anthropic.claude-sonnet-4-6-20260101-v1:0`
+- `VERIFY_MODEL_ID` — `apac.anthropic.claude-sonnet-4-6-20260101-v1:0`
 - `PROMPT_DIR` — classify와 동일 (`v1.0`).
 
 ## Rules
