@@ -1,17 +1,39 @@
-# GitHub Actions workflows validation — 4 workflows + PR template + setup docs.
+# GitHub Actions + Atlantis workflow validation.
+#
+# Terraform plan/apply 는 .github/workflows/ 가 아닌 **Atlantis** (<INFRA_REPO> repo
+# 의 EKS hub cluster) 가 처리한다. 본 repo 에는 그래서 `atlantis.yaml` 만 있고
+# .github/workflows/terraform-{plan,apply}.yml 은 존재하지 않는다.
 
 assert_file_exists ".github/workflows/pr-review.yml"
 assert_file_exists ".github/workflows/ci.yml"
-assert_file_exists ".github/workflows/terraform-plan.yml"
-assert_file_exists ".github/workflows/terraform-apply.yml"
 assert_file_exists ".github/pull_request_template.md"
 assert_file_exists "docs/operations/github-actions-setup.md"
+assert_file_exists "atlantis.yaml"
 
-# pr-review.yml — must use pull_request_target + Bedrock Claude + diff filter
+# Negative: terraform-{plan,apply}.yml 은 제거되어야 (Atlantis 가 대체).
+TOTAL=$((TOTAL + 1))
+if [ -f ".github/workflows/terraform-plan.yml" ] || [ -f ".github/workflows/terraform-apply.yml" ]; then
+    FAIL=$((FAIL + 1))
+    FAILED_NAMES+=("terraform-{plan,apply}.yml 은 Atlantis 로 대체되어 제거되어야 한다")
+    echo "not ok $TOTAL - terraform GitHub Actions removed (Atlantis takes over)"
+else
+    PASS=$((PASS + 1))
+    echo "ok $TOTAL - terraform GitHub Actions removed (Atlantis takes over)"
+fi
+
+# atlantis.yaml — repo-level project config
+assert_grep "^version: 3" "atlantis.yaml" "atlantis.yaml is v3 schema"
+assert_grep "automerge: false" "atlantis.yaml" "atlantis automerge disabled — human merges"
+assert_grep "dir: infra/envs/dev" "atlantis.yaml" "atlantis maps dev project to infra/envs/dev"
+assert_grep "apply_requirements" "atlantis.yaml" "atlantis enforces approval + mergeable"
+assert_grep "approved" "atlantis.yaml" "atlantis requires PR approval before apply"
+assert_grep "mergeable" "atlantis.yaml" "atlantis requires PR to be mergeable before apply"
+
+# pr-review.yml — uses pull_request_target + Bedrock Claude + diff filter
 assert_grep "pull_request_target" ".github/workflows/pr-review.yml" "pr-review uses pull_request_target trigger"
 assert_grep "CLAUDE_CODE_USE_BEDROCK" ".github/workflows/pr-review.yml" "pr-review uses Bedrock backend"
 assert_grep "ANTHROPIC_BEDROCK_BASE_URL" ".github/workflows/pr-review.yml" "pr-review sets Bedrock base URL"
-assert_grep "apac.anthropic.claude-opus-4-7" ".github/workflows/pr-review.yml" "pr-review uses APAC cross-region inference profile"
+assert_grep "global.anthropic.claude-opus-4-7" ".github/workflows/pr-review.yml" "pr-review uses global cross-region inference profile"
 assert_grep "taxonomy_tree" ".github/workflows/pr-review.yml" "pr-review filters generated taxonomy artifacts"
 assert_grep "claude -p" ".github/workflows/pr-review.yml" "pr-review invokes claude CLI with -p (system prompt)"
 assert_grep "output-format text" ".github/workflows/pr-review.yml" "pr-review uses output-format text (not json)"
@@ -28,7 +50,7 @@ else
     echo "ok $TOTAL - pr-review uses runner Instance Profile (no OIDC step)"
 fi
 
-# ci.yml — must run pytest + terraform validate, gated by path filters
+# ci.yml — runs pytest + terraform validate, gated by path filters
 assert_grep "dorny/paths-filter" ".github/workflows/ci.yml" "ci uses paths-filter"
 assert_grep "ruff check" ".github/workflows/ci.yml" "ci runs ruff check"
 assert_grep "mypy src" ".github/workflows/ci.yml" "ci runs mypy"
@@ -36,47 +58,15 @@ assert_grep "pytest" ".github/workflows/ci.yml" "ci runs pytest"
 assert_grep "terraform fmt -recursive -check" ".github/workflows/ci.yml" "ci runs terraform fmt check"
 assert_grep "terraform.*validate" ".github/workflows/ci.yml" "ci runs terraform validate"
 
-# terraform-plan.yml — must trigger on PR, post comment, NOT apply
-assert_grep "pull_request" ".github/workflows/terraform-plan.yml" "terraform-plan triggers on PR"
-assert_grep "terraform plan" ".github/workflows/terraform-plan.yml" "terraform-plan runs plan"
-assert_grep "gh pr comment" ".github/workflows/terraform-plan.yml" "terraform-plan posts result as PR comment"
-assert_grep "callcenter-github-actions-tf-plan" ".github/workflows/terraform-plan.yml" "terraform-plan uses dedicated OIDC role"
-# Negative: terraform-plan MUST NOT run apply
-TOTAL=$((TOTAL + 1))
-if grep -qE "terraform apply" ".github/workflows/terraform-plan.yml"; then
-    FAIL=$((FAIL + 1))
-    FAILED_NAMES+=("terraform-plan must not run apply")
-    echo "not ok $TOTAL - terraform-plan must not run apply"
-else
-    PASS=$((PASS + 1))
-    echo "ok $TOTAL - terraform-plan does not run apply"
-fi
-
-# terraform-apply.yml — must be gated to main push + workflow_dispatch with environment
-assert_grep "branches: \[main\]" ".github/workflows/terraform-apply.yml" "terraform-apply gated to main branch"
-assert_grep "workflow_dispatch" ".github/workflows/terraform-apply.yml" "terraform-apply allows manual dispatch"
-assert_grep "environment:" ".github/workflows/terraform-apply.yml" "terraform-apply uses environment protection"
-assert_grep "callcenter-github-actions-tf-apply" ".github/workflows/terraform-apply.yml" "terraform-apply uses dedicated OIDC role"
-assert_grep "terraform apply" ".github/workflows/terraform-apply.yml" "terraform-apply runs apply"
-
-# PR template — must mention Mermaid for ADRs (project convention) + branch workflow
+# PR template — must mention Mermaid for ADRs (project convention)
 assert_grep "Mermaid" ".github/pull_request_template.md" "PR template enforces Mermaid for ADRs"
 assert_grep "pytest" ".github/pull_request_template.md" "PR template has pytest checklist item"
 assert_grep "terraform.*validate" ".github/pull_request_template.md" "PR template has terraform validate checklist item"
 
-# Setup docs — must explain OIDC + environment protection
-assert_grep "open-id-connect-provider" "docs/operations/github-actions-setup.md" "setup docs explain OIDC provider"
-assert_grep "callcenter-github-actions-pr-review" "docs/operations/github-actions-setup.md" "setup docs define pr-review role"
-assert_grep "callcenter-github-actions-tf-plan" "docs/operations/github-actions-setup.md" "setup docs define tf-plan role"
-assert_grep "callcenter-github-actions-tf-apply" "docs/operations/github-actions-setup.md" "setup docs define tf-apply role"
-assert_grep "Branch Protection" "docs/operations/github-actions-setup.md" "setup docs cover branch protection"
-
-# Self-hosted runner labels — workflows must use call-center-admin-{arm,x86,claude-arm}
+# Self-hosted runner labels
 assert_grep "call-center-admin-claude-arm" ".github/workflows/pr-review.yml" "pr-review runs on claude-arm runner"
 assert_grep "call-center-admin-arm" ".github/workflows/ci.yml" "ci runs on arm runner"
-assert_grep "call-center-admin-x86" ".github/workflows/terraform-plan.yml" "terraform-plan runs on x86 runner"
-assert_grep "call-center-admin-x86" ".github/workflows/terraform-apply.yml" "terraform-apply runs on x86 runner"
-# Negative: no workflow should fall back to ubuntu-latest
+# Negative: no remaining workflow should fall back to ubuntu-latest
 TOTAL=$((TOTAL + 1))
 if grep -qE "^\s*runs-on:\s*ubuntu" .github/workflows/*.yml; then
     FAIL=$((FAIL + 1))
@@ -86,29 +76,17 @@ else
     PASS=$((PASS + 1))
     echo "ok $TOTAL - workflows use self-hosted runners (no ubuntu-latest fallback)"
 fi
-assert_grep "Self-hosted runners" "docs/operations/github-actions-setup.md" "setup docs cover self-hosted runner setup"
-assert_grep "call-center-admin-claude-arm" "docs/operations/github-actions-setup.md" "setup docs document claude-arm runner"
-
-# AWS_ACCOUNT_ID must be a repository VARIABLE (not secret), so workflows can graceful-skip
-# Terraform workflows still need OIDC + vars.AWS_ACCOUNT_ID (pr-review doesn't)
-assert_grep "vars.AWS_ACCOUNT_ID" ".github/workflows/terraform-plan.yml" "terraform-plan uses vars.AWS_ACCOUNT_ID"
-assert_grep "vars.AWS_ACCOUNT_ID" ".github/workflows/terraform-apply.yml" "terraform-apply uses vars.AWS_ACCOUNT_ID"
-# Negative: no workflow should fall back to secrets.AWS_ACCOUNT_ID
-TOTAL=$((TOTAL + 1))
-if grep -qE "secrets\.AWS_ACCOUNT_ID" .github/workflows/*.yml; then
-    FAIL=$((FAIL + 1))
-    FAILED_NAMES+=("workflows must use vars.AWS_ACCOUNT_ID not secrets")
-    echo "not ok $TOTAL - workflows must use vars.AWS_ACCOUNT_ID not secrets"
-else
-    PASS=$((PASS + 1))
-    echo "ok $TOTAL - workflows use vars.AWS_ACCOUNT_ID (no secrets fallback)"
-fi
 
 # setup-terraform must disable the node-based wrapper for self-hosted runner safety
 assert_grep "terraform_wrapper: false" ".github/workflows/ci.yml" "ci disables setup-terraform node wrapper"
-assert_grep "terraform_wrapper: false" ".github/workflows/terraform-plan.yml" "terraform-plan disables setup-terraform node wrapper"
-assert_grep "terraform_wrapper: false" ".github/workflows/terraform-apply.yml" "terraform-apply disables setup-terraform node wrapper"
 
-# OIDC-using terraform workflows must have if: vars.AWS_ACCOUNT_ID != '' graceful gate
-assert_grep "if: vars.AWS_ACCOUNT_ID != ''" ".github/workflows/terraform-plan.yml" "terraform-plan job gated by vars.AWS_ACCOUNT_ID"
-assert_grep "if: vars.AWS_ACCOUNT_ID != ''" ".github/workflows/terraform-apply.yml" "terraform-apply job gated by vars.AWS_ACCOUNT_ID"
+# Setup docs — explain Atlantis flow (new) + Self-hosted runners (kept)
+assert_file_exists "docs/operations/atlantis-setup.md"
+assert_grep "Atlantis" "docs/operations/github-actions-setup.md" "github-actions-setup notes Atlantis migration"
+assert_grep "atlantis-setup" "docs/operations/github-actions-setup.md" "github-actions-setup links to atlantis-setup.md"
+assert_grep "<ATLANTIS_IRSA_ROLE>" "docs/operations/atlantis-setup.md" "atlantis-setup names the IRSA role"
+assert_grep "AssumeRole" "docs/operations/atlantis-setup.md" "atlantis-setup documents the AssumeRole / IAM chain"
+assert_grep "atlantis plan" "docs/operations/atlantis-setup.md" "atlantis-setup documents the plan command"
+assert_grep "atlantis apply" "docs/operations/atlantis-setup.md" "atlantis-setup documents the apply command"
+assert_grep "Self-hosted runners" "docs/operations/github-actions-setup.md" "setup docs cover self-hosted runner setup"
+assert_grep "call-center-admin-claude-arm" "docs/operations/github-actions-setup.md" "setup docs document claude-arm runner"
