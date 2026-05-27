@@ -24,6 +24,7 @@ sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 import boto3
 
+from lib.metrics import emit
 from lib.pii_regex import mask
 
 _s3 = boto3.client("s3")
@@ -50,6 +51,12 @@ def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
         ContentType="text/plain; charset=utf-8",
         ServerSideEncryption="aws:kms",
     )
+
+    # PR9: per-PII-type EMF emit. zero-count types are skipped to avoid
+    # dimension cardinality bloat in CloudWatch.
+    for pii_type, count in stats.as_dict().items():
+        if count > 0:
+            emit("pii.maskApplied", float(count), pii_type=pii_type)
 
     return {
         "callId": payload["callId"],

@@ -2,6 +2,7 @@
 
 import json
 import os
+import sys
 from unittest.mock import MagicMock, patch
 
 import boto3
@@ -15,6 +16,8 @@ def aws_env(monkeypatch):
     monkeypatch.setenv("AWS_REGION", "ap-northeast-2")
     monkeypatch.setenv("MODEL_ID", "global.anthropic.claude-opus-4-7")
     monkeypatch.setenv("PROMPT_DIR", "src/prompts/v1.0")
+    # Force re-import: module-level _ADAPTER caches the patched bedrock client.
+    sys.modules.pop("lambdas.classify.handler", None)
 
 
 @mock_aws
@@ -62,3 +65,58 @@ def test_classify_returns_structured_result(aws_env) -> None:
         assert result["classification"]["confidence"] == 0.91
         assert result["modelId"] == os.environ["MODEL_ID"]
         assert result["promptVersion"] == "v1.0"
+
+
+@mock_aws
+def test_classify_emits_invoked_and_confidence_metrics(aws_env, capsys) -> None:
+    """PR9: classify must emit both invoked count and confidence value as EMF."""
+    s3 = boto3.client("s3", region_name="ap-northeast-2")
+    s3.create_bucket(
+        Bucket="masked-test",
+        CreateBucketConfiguration={"LocationConstraint": "ap-northeast-2"},
+    )
+    s3.put_object(Bucket="masked-test", Key="x_masked.txt", Body=b"agent: hi")
+
+    body = json.dumps(
+        {
+            "대": {"code": "CS_CENTER_CONSULT_TYPE_PAY_NONEY", "name": "페이머니"},
+            "중": {
+                "code": "CS_CENTER_CONSULT_TYPE_PAY_NONEY_CHARGE_WITHDRAWAL",
+                "name": "충전/출금",
+            },
+            "소": {
+                "code": "CS_CENTER_CONSULT_TYPE_PAY_NONEY_CHARGE_WITHDRAWAL_CHARGE_DELAY",
+                "name": "충전 지연/오류",
+            },
+            "confidence": 0.77,
+            "reason": "고객이 충전 오류를 호소함",
+            "alternativesConsidered": [],
+        }
+    )
+    fake_bedrock_resp = {"output": {"message": {"content": [{"text": body}]}}}
+    fake_client = MagicMock()
+    fake_client.converse.return_value = fake_bedrock_resp
+
+    with patch("lib.bedrock_client.boto3.client", return_value=fake_client):
+        from lambdas.classify.handler import handler
+
+        handler(
+            {
+                "callId": "call_emf",
+                "maskedBucket": "masked-test",
+                "maskedKey": "x_masked.txt",
+            },
+            None,
+        )
+
+    captured = capsys.readouterr().out
+    lines = [line for line in captured.splitlines() if line.startswith("{")]
+    metric_names = []
+    for line in lines:
+        record = json.loads(line)
+        cw = record.get("_aws", {}).get("CloudWatchMetrics", [])
+        for m in cw:
+            for metric in m["Metrics"]:
+                metric_names.append(metric["Name"])
+    assert "classify.invoked" in metric_names
+    assert "classify.confidence" in metric_names
