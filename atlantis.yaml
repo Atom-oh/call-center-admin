@@ -45,7 +45,7 @@ projects:
   - name: shared-state
     dir: infra/shared-state
     workspace: default
-    terraform_version: v1.10.5
+    terraform_version: v1.9.6
     autoplan:
       enabled: true
       when_modified:
@@ -62,7 +62,7 @@ projects:
   - name: dev
     dir: infra/envs/dev
     workspace: default
-    terraform_version: v1.10.5
+    terraform_version: v1.9.6
     autoplan:
       enabled: true
       when_modified:
@@ -77,7 +77,7 @@ projects:
   # - name: stg
   #   dir: infra/envs/stg
   #   workspace: default
-  #   terraform_version: v1.10.5
+  #   terraform_version: v1.9.6
   #   autoplan:
   #     enabled: false
   #   apply_requirements:
@@ -88,7 +88,7 @@ projects:
   # - name: prd
   #   dir: infra/envs/prd
   #   workspace: default
-  #   terraform_version: v1.10.5
+  #   terraform_version: v1.9.6
   #   autoplan:
   #     enabled: false
   #   apply_requirements:
