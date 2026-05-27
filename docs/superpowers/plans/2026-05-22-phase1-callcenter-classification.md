@@ -814,7 +814,9 @@ resource "aws_dynamodb_table" "consult_results" {
   }
 
   global_secondary_index {
-    name            = "category대code-classifiedAt-index"
+    # DDB index names are restricted to [a-zA-Z0-9_.-]+ (no Korean) even though
+    # attribute names can be Unicode. Use a romanized index name (`대` → `daecode`).
+    name            = "category-daecode-classifiedAt-index"
     hash_key        = "category_대code"
     range_key       = "classifiedAt"
     projection_type = "ALL"
@@ -3262,7 +3264,7 @@ def search_by_agent(agent_id: str, limit: int = 100) -> list:
 
 def search_by_category(da_code: str, limit: int = 100) -> list:
     resp = _table.query(
-        IndexName="category대code-classifiedAt-index",
+        IndexName="category-daecode-classifiedAt-index",
         KeyConditionExpression="category_대code = :c",
         ExpressionAttributeValues={":c": da_code},
         Limit=limit,
