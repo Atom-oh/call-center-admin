@@ -81,3 +81,26 @@ module "classify_pipeline" {
   firehose_name      = module.analytics.firehose_name
   firehose_arn       = module.analytics.firehose_arn
 }
+
+# Slack webhook 은 ADR-009 에 따라 Secrets Manager 에 사전 등록되어 있다고
+# 가정한다. 미등록 시 PR 머지 전 운영팀이 수동 등록:
+#   aws secretsmanager create-secret \
+#     --name callcenter-${var.env}-slack-webhook \
+#     --secret-string "https://hooks.slack.com/services/..."
+data "aws_secretsmanager_secret_version" "slack_webhook" {
+  secret_id = "callcenter-${var.env}-slack-webhook"
+}
+
+module "observability" {
+  source = "../../modules/observability"
+
+  env                  = var.env
+  slack_webhook_url    = data.aws_secretsmanager_secret_version.slack_webhook.secret_string
+  sfn_arn              = module.classify_pipeline.sfn_arn
+  classify_dlq_name    = "callcenter-${var.env}-classify-dlq"
+  persist_dlq_name     = "callcenter-${var.env}-persist-dlq"
+  lambda_classify_name = module.classify_pipeline.classify_name
+  lambda_verify_name   = module.classify_pipeline.verify_name
+  lambda_persist_name  = module.classify_pipeline.persist_name
+  lambda_pii_name      = module.classify_pipeline.pii_guard_name
+}
