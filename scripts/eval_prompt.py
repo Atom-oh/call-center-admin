@@ -19,7 +19,7 @@ def main() -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--golden", type=Path, default=Path("tests/golden/samples.json"))
     p.add_argument("--prompt-dir", type=Path, default=Path("src/prompts/v1.0"))
-    p.add_argument("--model-id", default="apac.anthropic.claude-opus-4-7-20260101-v1:0")
+    p.add_argument("--model-id", default="global.anthropic.claude-opus-4-7")
     p.add_argument("--history", type=Path, default=Path("tests/golden/eval-history.csv"))
     p.add_argument("--skip-tbd", action="store_true", help="placeholder 행은 건너뛴다")
     args = p.parse_args()
