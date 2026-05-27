@@ -1,6 +1,8 @@
 # GitHub Actions Setup (OIDC, Secrets, Environments)
 
-본 문서는 `.github/workflows/` 의 4개 워크플로우를 처음 동작시키기 위해 AWS / GitHub 콘솔에서 한 번만 수행해야 하는 셋업을 정리한다.
+> **[2026-05-27 업데이트]** Terraform 배포 파이프는 GitHub Actions 에서 **Atlantis** 로 이관되었습니다. `terraform-plan.yml` / `terraform-apply.yml` 는 제거되었으며, 본 문서의 §관련 표·섹션은 참고용으로 유지됩니다. 새 운영 절차는 [`atlantis-setup.md`](./atlantis-setup.md) 를 참조하세요. §1 (OIDC provider) 와 §2 의 IAM role 정의는 옵션 A (기존 OIDC role 재사용) 에서 여전히 사용됩니다.
+
+본 문서는 `.github/workflows/` 의 워크플로우(`pr-review.yml`, `ci.yml`) 와 (이관 전) Terraform 워크플로우를 처음 동작시키기 위해 AWS / GitHub 콘솔에서 한 번만 수행해야 하는 셋업을 정리한다.
 
 ## 0. 본 프로젝트의 자동화 개요
 

@@ -96,13 +96,14 @@ tools/prompts/              — 실험·디버깅용 일회성 프롬프트
 - PR이 올라오면 자동 실행 (.github/workflows/):
   1. **AI 리뷰** (`pr-review.yml`) — Claude Opus 4.7 on Bedrock 이 CLAUDE.md 룰에 따라 변경 리뷰 후 코멘트
   2. **CI** (`ci.yml`) — ruff + mypy + pytest + terraform fmt/validate + tfsec + 분류 트리 산출물 stale 검사
-  3. **Terraform plan** (`terraform-plan.yml`) — `infra/**` 변경 시 dev plan 결과 PR 코멘트
-- main 머지 시 자동 실행:
-  - **Terraform apply** (`terraform-apply.yml`) — `infra/**` 변경 시 dev 자동 apply (`environment: dev` 보호 룰)
-  - stg/prd 는 `workflow_dispatch` + 별도 환경 보호 룰 + reviewer 승인 필요
+  3. **Atlantis** — `infra/**` 변경 시 [Atlantis](https://<ATLANTIS_SERVER_URL>) 가 PR 에 `plan` 결과 코멘트 게시.
+     PR 코멘트로 `atlantis plan` / `atlantis apply` 재실행/적용. 설정: `atlantis.yaml`.
+- main 머지 시: Atlantis apply 는 PR 코멘트에서 끝나므로 머지 후 별도 액션 없음.
+  stg/prd 는 `infra/envs/{stg,prd}/` 가 생성되면 `atlantis.yaml` 의 해당 프로젝트 블록 주석을 해제.
 - Conventional commit 메시지: `feat(scope): ...`, `fix(scope): ...`, `docs(scope): ...`, `test(scope): ...`, `refactor(scope): ...`, `chore(scope): ...`, `ci(scope): ...`
 - 메시지 본문의 Co-Authored-By 라인은 `scripts/install-hooks.sh` 가 설치하는 `commit-msg` hook 이 자동 제거.
-- 셋업 절차: `docs/operations/github-actions-setup.md` (OIDC role, GitHub environment 보호 룰, branch protection).
+- 셋업 절차: `docs/operations/atlantis-setup.md` (Atlantis IRSA trust, branch protection).
+  기존 GitHub Actions OIDC 셋업 절차(`docs/operations/github-actions-setup.md` §1, §2) 는 `pr-review.yml` / `ci.yml` 의 OIDC 사용을 위해 여전히 유효합니다.
 
 ## Key Commands
 
