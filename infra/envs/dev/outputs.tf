@@ -34,3 +34,6 @@ output "firehose_arn" { value = module.analytics.firehose_arn }
 output "glue_db_name" { value = module.analytics.glue_db_name }
 output "glue_table_name" { value = module.analytics.glue_table_name }
 output "athena_workgroup" { value = module.analytics.athena_workgroup }
+output "alerts_topic_arn" { value = module.observability.alerts_topic_arn }
+output "dashboard_name" { value = module.observability.dashboard_name }
+output "alarm_names" { value = module.observability.alarm_names }
