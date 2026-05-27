@@ -38,27 +38,11 @@ parallel_apply: false
 delete_source_branch_on_merge: false
 
 projects:
-  # Bootstrap: creates the shared S3 tfstate bucket + DDB lock table
-  # in ap-northeast-2 for all future Atlantis-managed projects.
-  # Local state (no remote backend). Apply once via Atlantis, then
-  # `dev` and any future projects use the resulting bucket.
-  - name: shared-state
-    dir: infra/shared-state
-    workspace: default
-    terraform_version: v1.9.6
-    autoplan:
-      enabled: true
-      when_modified:
-        - "*.tf"
-        - "../../atlantis.yaml"
-    apply_requirements:
-      - approved
-      - mergeable
-
-  # dev env uses the shared bucket created by the shared-state project.
-  # Bucket: <YOUR_TFSTATE_BUCKET>  (ap-northeast-2)
-  # Lock:   <YOUR_TFSTATE_LOCK_TABLE> (DDB, ap-northeast-2)
+  # dev env uses the shared tfstate bucket `<YOUR_TFSTATE_BUCKET>`
+  # (ap-northeast-2). The bucket is CLI-bootstrapped one-time outside
+  # Terraform — see docs/operations/atlantis-setup.md.
   # Key prefix: call-center-admin/envs/dev.tfstate
+  # No DDB lock — non-prod / single operator.
   - name: dev
     dir: infra/envs/dev
     workspace: default
