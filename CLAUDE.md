@@ -75,7 +75,7 @@ tools/prompts/              — 실험·디버깅용 일회성 프롬프트
 - 모듈 input/output 인터페이스 명시. **사용 시점**별 그룹 코멘트 (`# PR3 (PII Guard) — actively used`, `# Reserved for PR7 (Firehose Parquet)` 등).
 - KMS는 데이터 클래스별 분리 (raw / masked / analytics / ddb 각 1 CMK).
 - 모든 S3는 versioning + SSE-KMS + PAB. lifecycle 룰에는 반드시 `filter {}` 명시 (provider 6.x 호환).
-- DDB attribute 명은 한국어(`category_대code`) 허용. index 명은 attribute 명과 underscore 일치 유지 (`category_대code-classifiedAt-index`).
+- DDB attribute 명은 한국어(`category_대code`) 허용. 그러나 **DDB index 명은 ASCII 만 허용**(`[a-zA-Z0-9_.-]+`) — 한글 attribute 를 가리키는 GSI 는 romanize: `category-daecode-classifiedAt-index` (`대` → `daecode`).
 
 ### 분류 코드 식별자
 - xlsx 원본의 코드 문자열을 **글자 하나 변형 없이** 그대로 사용. `NONEY`(MONEY 오타), `PAYNENT`(PAYMENT 오타) 등은 시스템 식별자이므로 의도적 보존. 코드 안에 "fix" 하지 말 것.

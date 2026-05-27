@@ -55,7 +55,7 @@ infra/
 
 ### DynamoDB
 - attribute 명에 한국어 허용 (`category_대code` 등)
-- GSI 이름은 attribute 이름과 underscore 일치: `category_대code-classifiedAt-index`
+- DDB index 명은 ASCII 만 허용 (`[a-zA-Z0-9_.-]+`). 한글 attribute (`category_대code`) 를 가리키는 GSI 는 romanize 한 이름 사용: `category-daecode-classifiedAt-index` (`대` → `daecode`).
 - TTL=`ttlEpoch` (epoch seconds)
 - streams `NEW_AND_OLD_IMAGES`
 - PITR ON

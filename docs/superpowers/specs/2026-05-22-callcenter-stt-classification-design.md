@@ -562,7 +562,7 @@ attributes:
 **GSI**:
 - `GSI1: status-classifiedAt-index` — HITL 검토 큐
 - `GSI2: agentId-classifiedAt-index` — 상담원별 통화 조회
-- `GSI3: category대code-classifiedAt-index` — 카테고리별 통화 조회
+- `GSI3: category-daecode-classifiedAt-index` — 카테고리별 통화 조회 (hash key = `category_대code` 속성; DDB index 명은 ASCII 만 허용하므로 `대` 를 `daecode` 로 romanize)
 
 ### 5.2 S3 분석 데이터 (Parquet 미러)
 
