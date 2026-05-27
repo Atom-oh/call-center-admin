@@ -11,6 +11,20 @@
 | Repo allowlist | `github.com/Atom-oh/*` (이미 적용) |
 | Atlantis IRSA | `<ATLANTIS_IRSA_ROLE>` (AWS 계정 `<ACCOUNT_ID>`) |
 | 본 리포 설정 | `atlantis.yaml` (저장소 루트) |
+| tfstate 버킷 | `<LEGACY_TFSTATE_BUCKET>` (공유, key prefix `call-center-admin/`) |
+| tfstate lock | `<LEGACY_TFSTATE_LOCK_TABLE>` (DynamoDB, 공유) |
+
+## 통합 tfstate 정책
+
+Atlantis 가 관리하는 모든 프로젝트 (<INFRA_REPO>, multi-region-architecture, call-center-admin) 는 **단일 S3 버킷** `<LEGACY_TFSTATE_BUCKET>` 를 공유합니다. 프로젝트별 격리는 **key prefix** 로 합니다:
+
+| 프로젝트 | key prefix 예시 |
+|---|---|
+| <INFRA_REPO> | `<infra-repo>/<module>.tfstate` |
+| multi-region-architecture | (기존 키들) |
+| call-center-admin | `call-center-admin/envs/dev.tfstate` |
+
+이렇게 하면 Atlantis IRSA 가 단일 버킷 권한만 갖고 모든 프로젝트의 상태를 관리할 수 있습니다.
 
 ## 운영 흐름
 
