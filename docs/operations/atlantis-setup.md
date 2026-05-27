@@ -11,20 +11,21 @@
 | Repo allowlist | `github.com/Atom-oh/*` (이미 적용) |
 | Atlantis IRSA | `AtlantisIRSARole` (AWS 계정 `180294183052`) |
 | 본 리포 설정 | `atlantis.yaml` (저장소 루트) |
-| tfstate 버킷 | `multi-region-mall-terraform-state` (공유, key prefix `call-center-admin/`) |
-| tfstate lock | `multi-region-mall-terraform-locks` (DynamoDB, 공유) |
+| tfstate 버킷 | `atom-oh-atlantis-tfstate-apne2` (ap-northeast-2, 공유) |
+| tfstate lock | `atom-oh-atlantis-tfstate-locks-apne2` (DynamoDB, ap-northeast-2, 공유) |
 
 ## 통합 tfstate 정책
 
-Atlantis 가 관리하는 모든 프로젝트 (AWS-Demo-Platform, multi-region-architecture, call-center-admin) 는 **단일 S3 버킷** `multi-region-mall-terraform-state` 를 공유합니다. 프로젝트별 격리는 **key prefix** 로 합니다:
+Atlantis 가 관리하는 신규 프로젝트들은 ap-northeast-2 의 단일 S3 버킷 `atom-oh-atlantis-tfstate-apne2` 를 공유합니다. 프로젝트별 격리는 **key prefix** 로 합니다:
 
 | 프로젝트 | key prefix 예시 |
 |---|---|
-| AWS-Demo-Platform | `aws-demo-platform/<module>.tfstate` |
-| multi-region-architecture | (기존 키들) |
 | call-center-admin | `call-center-admin/envs/dev.tfstate` |
+| (향후 프로젝트) | `<project-slug>/<...>.tfstate` |
 
-이렇게 하면 Atlantis IRSA 가 단일 버킷 권한만 갖고 모든 프로젝트의 상태를 관리할 수 있습니다.
+버킷은 `infra/shared-state/` 스택이 **Atlantis 를 통해 1회 부트스트랩** 합니다 (local state). 이후 모든 프로젝트가 이 버킷을 backend 로 사용.
+
+> 참고: 기존 `multi-region-mall-terraform-state` 버킷 (us-east-1) 은 AWS-Demo-Platform 과 multi-region-architecture 가 계속 사용. 향후 같은 새 버킷으로 마이그레이션 가능 (별도 작업).
 
 ## 운영 흐름
 
