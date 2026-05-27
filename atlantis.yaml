@@ -38,22 +38,11 @@ parallel_apply: false
 delete_source_branch_on_merge: false
 
 projects:
-  # Bootstrap: state bucket + DDB lock table. No remote backend (local state).
-  # Must be applied before `dev` can `terraform init` successfully.
-  # Uses the server-side `standard` workflow (init + plan, apply).
-  - name: shared-state
-    dir: infra/shared-state
-    workspace: default
-    terraform_version: v1.9.6
-    autoplan:
-      enabled: true
-      when_modified:
-        - "*.tf"
-        - "../../atlantis.yaml"
-    apply_requirements:
-      - approved
-      - mergeable
-
+  # All env stacks share the unified tfstate bucket
+  # `multi-region-mall-terraform-state` (already used by AWS-Demo-Platform
+  # and multi-region-architecture). Per-project isolation is by key prefix
+  # (call-center-admin/envs/<env>.tfstate). No separate bootstrap stack
+  # needed — the bucket and DDB lock table already exist.
   - name: dev
     dir: infra/envs/dev
     workspace: default
