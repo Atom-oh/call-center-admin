@@ -15,7 +15,7 @@ import pytest
 def env(monkeypatch):
     monkeypatch.setenv("AWS_DEFAULT_REGION", "ap-northeast-2")
     monkeypatch.setenv("AWS_REGION", "ap-northeast-2")
-    monkeypatch.setenv("VERIFY_MODEL_ID", "apac.anthropic.claude-sonnet-4-6-20260101-v1:0")
+    monkeypatch.setenv("VERIFY_MODEL_ID", "global.anthropic.claude-sonnet-4-6")
     monkeypatch.setenv("PROMPT_DIR", "src/prompts/v1.0")
     # 모듈-레벨 _ADAPTER 가 첫 import 시 bedrock 클라이언트를 캐시하므로,
     # 테스트마다 fresh patch가 적용되도록 handler 모듈을 unload 한다.
@@ -27,7 +27,7 @@ def _make_event(primary_codes: tuple[str, str, str], conf: float = 0.6) -> dict:
         "callId": "c1",
         "maskedBucket": "masked-test",
         "maskedKey": "k_masked.txt",
-        "modelId": "apac.anthropic.claude-opus-4-7-20260101-v1:0",
+        "modelId": "global.anthropic.claude-opus-4-7",
         "promptVersion": "v1.0",
         "classification": {
             "대": {"code": primary_codes[0], "name": "n"},
@@ -82,8 +82,8 @@ def test_agreement_marks_auto_confirmed(env) -> None:
         assert out["verified"] == "auto-confirmed"
         assert out["status"] == "confirmed"
         assert out["modelPath"] == [
-            "apac.anthropic.claude-opus-4-7-20260101-v1:0",
-            "apac.anthropic.claude-sonnet-4-6-20260101-v1:0",
+            "global.anthropic.claude-opus-4-7",
+            "global.anthropic.claude-sonnet-4-6",
         ]
 
 
@@ -119,4 +119,4 @@ def test_verify_includes_secondary_result_in_output(env) -> None:
         assert "verifyResult" in out
         assert out["verifyResult"]["confidence"] == 0.85
         assert out["verifyResult"]["대"]["code"] == PRIMARY_CODES[0]
-        assert out["verifiedBy"] == "apac.anthropic.claude-sonnet-4-6-20260101-v1:0"
+        assert out["verifiedBy"] == "global.anthropic.claude-sonnet-4-6"
