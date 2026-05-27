@@ -6,6 +6,8 @@ terraform {
   }
 }
 
+data "aws_caller_identity" "current" {}
+
 # ---------- Per-Lambda staging dirs ----------
 # 각 Lambda는 자신의 staging dir(`build/{name}/`)에 필요한 파일만 복사한 뒤 zip.
 # 이렇게 하면 같은 src/ 트리에서 만들어도 Lambda별로 zip에 들어가는 모듈 set가 분리되어
@@ -183,9 +185,15 @@ resource "aws_iam_role_policy" "classify" {
         Resource = var.kms_masked_arn
       },
       {
-        Effect   = "Allow"
-        Action   = ["bedrock:InvokeModel"]
-        Resource = "arn:aws:bedrock:ap-northeast-2::foundation-model/anthropic.claude-opus-4-*"
+        # Bedrock CRIS (global.anthropic.claude-opus-4-7) routes through
+        # an inference-profile resource AND the underlying foundation
+        # models in routed regions. Both ARN types are required.
+        Effect = "Allow"
+        Action = ["bedrock:InvokeModel"]
+        Resource = [
+          "arn:aws:bedrock:ap-northeast-2:${data.aws_caller_identity.current.account_id}:inference-profile/global.anthropic.claude-opus-4-7",
+          "arn:aws:bedrock:*::foundation-model/anthropic.claude-opus-4-*"
+        ]
       },
       {
         Effect   = "Allow"
@@ -251,9 +259,14 @@ resource "aws_iam_role_policy" "verify" {
         Resource = var.kms_masked_arn
       },
       {
-        Effect   = "Allow"
-        Action   = ["bedrock:InvokeModel"]
-        Resource = "arn:aws:bedrock:ap-northeast-2::foundation-model/anthropic.claude-sonnet-4-*"
+        # Bedrock CRIS (global.anthropic.claude-sonnet-4-6) — same dual-ARN
+        # pattern as classify Lambda.
+        Effect = "Allow"
+        Action = ["bedrock:InvokeModel"]
+        Resource = [
+          "arn:aws:bedrock:ap-northeast-2:${data.aws_caller_identity.current.account_id}:inference-profile/global.anthropic.claude-sonnet-4-6",
+          "arn:aws:bedrock:*::foundation-model/anthropic.claude-sonnet-4-*"
+        ]
       },
       {
         Effect   = "Allow"
@@ -440,16 +453,16 @@ resource "aws_cloudwatch_log_group" "sfn" {
 }
 
 locals {
-  classify_dlq_url = replace(
-    var.classify_dlq_arn,
-    "arn:aws:sqs:ap-northeast-2:",
-    "https://sqs.ap-northeast-2.amazonaws.com/"
-  )
-  persist_dlq_url = replace(
-    var.persist_dlq_arn,
-    "arn:aws:sqs:ap-northeast-2:",
-    "https://sqs.ap-northeast-2.amazonaws.com/"
-  )
+  # SQS ARN format: arn:aws:sqs:REGION:ACCOUNT:QUEUE_NAME
+  # SQS URL format: https://sqs.REGION.amazonaws.com/ACCOUNT/QUEUE_NAME
+  # The previous `replace()` only stripped the prefix and left the `:`
+  # between account and queue name, producing an invalid URL like
+  # `https://sqs.ap-northeast-2.amazonaws.com/<ACCOUNT_ID>:callcenter-dev-classify-dlq`
+  # which SFN treats as a non-existent queue.
+  classify_dlq_parts = split(":", var.classify_dlq_arn)
+  classify_dlq_url   = "https://sqs.${local.classify_dlq_parts[3]}.amazonaws.com/${local.classify_dlq_parts[4]}/${local.classify_dlq_parts[5]}"
+  persist_dlq_parts  = split(":", var.persist_dlq_arn)
+  persist_dlq_url    = "https://sqs.${local.persist_dlq_parts[3]}.amazonaws.com/${local.persist_dlq_parts[4]}/${local.persist_dlq_parts[5]}"
 }
 
 resource "aws_sfn_state_machine" "classify" {
