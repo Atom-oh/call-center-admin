@@ -15,7 +15,7 @@
 ```json
 {
   "...spread of input...",
-  "modelId": "anthropic.claude-opus-4-7-20260101-v1:0",
+  "modelId": "apac.apac.anthropic.claude-opus-4-7-20260101-v1:0",
   "promptVersion": "v1.0",
   "classification": {
     "대": {"code": str, "name": str},
@@ -30,7 +30,7 @@
 
 ## Env vars
 
-- `MODEL_ID` — `anthropic.claude-opus-4-7-20260101-v1:0`
+- `MODEL_ID` — `apac.anthropic.claude-opus-4-7-20260101-v1:0`
 - `PROMPT_DIR` — `/var/task/prompts/v1.0` (Lambda 런타임), 로컬 테스트 시 `src/prompts/v1.0`
 
 ## Rules

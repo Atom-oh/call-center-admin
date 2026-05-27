@@ -13,7 +13,7 @@ from moto import mock_aws
 def aws_env(monkeypatch):
     monkeypatch.setenv("AWS_DEFAULT_REGION", "ap-northeast-2")
     monkeypatch.setenv("AWS_REGION", "ap-northeast-2")
-    monkeypatch.setenv("MODEL_ID", "anthropic.claude-opus-4-7-20260101-v1:0")
+    monkeypatch.setenv("MODEL_ID", "apac.anthropic.claude-opus-4-7-20260101-v1:0")
     monkeypatch.setenv("PROMPT_DIR", "src/prompts/v1.0")
 
 
