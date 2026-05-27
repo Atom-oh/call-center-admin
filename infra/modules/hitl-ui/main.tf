@@ -1,0 +1,346 @@
+# PR8 HITL UI — Streamlit on Fargate behind Cognito-authenticated internal ALB.
+#
+# Spec: docs/superpowers/specs/2026-05-27-hitl-ui-design.md
+# ADR matrix (preserved by tests/integration/test_hitl_ui_definition.py):
+#   ADR-005 — ECS+ECR (not Lambda); per-Lambda staging pattern does not apply
+#   ADR-006 — ECS task role grants ddb/masked/raw KMS only; analytics NOT granted
+#   ADR-007 — HITL flows do NOT invoke Step Functions (verified at code layer)
+#   ADR-008 — DDB queries use ASCII GSI names + Korean attr placeholders (code layer)
+#   ADR-009 — Cognito users are created post-apply by ops, not by Terraform
+#   G5/G6   — DDB IAM is Resource-scoped + action-minimal (Query/GetItem/UpdateItem)
+#   G7      — ALB internal=true, ingress 10.0.0.0/8
+#   G8      — ECR image_tag_mutability = IMMUTABLE
+#   G9      — Cognito password policy 12+ chars + 4 char classes
+#   G10     — ALB HTTPS listener uses TLS1.3 SSL policy
+#   G11     — Log permissions scoped to discrete log group ARN
+
+terraform {
+  required_providers {
+    aws = { source = "hashicorp/aws", version = "~> 5.70" }
+  }
+}
+
+##################################################
+# ECR — immutable tags (G8)                      #
+##################################################
+
+resource "aws_ecr_repository" "hitl" {
+  name                 = "callcenter-${var.env}-hitl-ui"
+  image_tag_mutability = "IMMUTABLE"
+
+  image_scanning_configuration {
+    scan_on_push = true
+  }
+}
+
+##################################################
+# Cognito — user pool + 3 groups (ADR-009 / G9)  #
+##################################################
+
+resource "aws_cognito_user_pool" "main" {
+  name = "callcenter-${var.env}-users"
+
+  password_policy {
+    minimum_length    = 12
+    require_lowercase = true
+    require_uppercase = true
+    require_numbers   = true
+    require_symbols   = true
+  }
+}
+
+resource "aws_cognito_user_pool_client" "alb" {
+  name                                 = "callcenter-${var.env}-alb-client"
+  user_pool_id                         = aws_cognito_user_pool.main.id
+  generate_secret                      = true
+  callback_urls                        = ["https://hitl.callcenter-${var.env}.kakaopay.internal/oauth2/idpresponse"]
+  allowed_oauth_flows                  = ["code"]
+  allowed_oauth_scopes                 = ["openid", "email", "profile"]
+  allowed_oauth_flows_user_pool_client = true
+  supported_identity_providers         = ["COGNITO"]
+}
+
+resource "aws_cognito_user_pool_domain" "main" {
+  domain       = "callcenter-${var.env}-hitl"
+  user_pool_id = aws_cognito_user_pool.main.id
+}
+
+resource "aws_cognito_user_group" "ops" {
+  name         = "ops"
+  user_pool_id = aws_cognito_user_pool.main.id
+  description  = "운영팀 — 검토 큐 관리"
+}
+
+resource "aws_cognito_user_group" "analyst" {
+  name         = "analyst"
+  user_pool_id = aws_cognito_user_pool.main.id
+  description  = "분석팀 — 검색 / 조회만"
+}
+
+resource "aws_cognito_user_group" "compliance" {
+  name         = "compliance"
+  user_pool_id = aws_cognito_user_pool.main.id
+  description  = "컴플라이언스 — 원본 STT 감사 다운로드"
+}
+
+##################################################
+# Security groups — ALB internal + ECS ingress   #
+##################################################
+
+resource "aws_security_group" "alb" {
+  name        = "callcenter-${var.env}-hitl-alb"
+  description = "Internal ALB ingress for HITL UI — 사내 CIDR only"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    description = "HTTPS from intranet (G7)"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["10.0.0.0/8"]
+  }
+
+  egress {
+    description = "Outbound to ECS tasks"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+resource "aws_security_group" "ecs" {
+  name        = "callcenter-${var.env}-hitl-ecs"
+  description = "ECS task security group — ingress only from ALB SG"
+  vpc_id      = var.vpc_id
+
+  ingress {
+    description     = "Streamlit container port from ALB"
+    from_port       = 8501
+    to_port         = 8501
+    protocol        = "tcp"
+    security_groups = [aws_security_group.alb.id]
+  }
+
+  egress {
+    description = "DDB / S3 / KMS over VPC endpoints + public internet for image pull"
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+##################################################
+# ALB — internal, TLS1.3, authenticate-cognito   #
+##################################################
+
+resource "aws_lb" "hitl" {
+  name               = "callcenter-${var.env}-hitl"
+  internal           = true
+  load_balancer_type = "application"
+  security_groups    = [aws_security_group.alb.id]
+  subnets            = var.private_subnet_ids
+}
+
+resource "aws_lb_target_group" "hitl" {
+  name        = "callcenter-${var.env}-hitl-tg"
+  port        = 8501
+  protocol    = "HTTP"
+  target_type = "ip"
+  vpc_id      = var.vpc_id
+
+  health_check {
+    path                = "/"
+    matcher             = "200-399"
+    interval            = 30
+    healthy_threshold   = 2
+    unhealthy_threshold = 3
+  }
+}
+
+# HTTPS listener requires ACM cert. When acm_certificate_arn is empty (lab
+# bootstrap before cert issuance), the listener block is created in count=0
+# mode and the ALB has no listener — apply will succeed but the service is
+# unreachable until ACM is wired in. This avoids the data-source chicken-and-egg.
+resource "aws_lb_listener" "https" {
+  count             = var.acm_certificate_arn != "" ? 1 : 0
+  load_balancer_arn = aws_lb.hitl.arn
+  port              = 443
+  protocol          = "HTTPS"
+  certificate_arn   = var.acm_certificate_arn
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+
+  default_action {
+    type = "authenticate-cognito"
+
+    authenticate_cognito {
+      user_pool_arn       = aws_cognito_user_pool.main.arn
+      user_pool_client_id = aws_cognito_user_pool_client.alb.id
+      user_pool_domain    = aws_cognito_user_pool_domain.main.domain
+    }
+  }
+}
+
+resource "aws_lb_listener_rule" "forward" {
+  count        = var.acm_certificate_arn != "" ? 1 : 0
+  listener_arn = aws_lb_listener.https[0].arn
+  priority     = 100
+
+  action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.hitl.arn
+  }
+
+  condition {
+    path_pattern {
+      values = ["/*"]
+    }
+  }
+}
+
+##################################################
+# ECS cluster + service                          #
+##################################################
+
+resource "aws_ecs_cluster" "main" {
+  name = "callcenter-${var.env}-hitl"
+}
+
+resource "aws_cloudwatch_log_group" "hitl" {
+  name              = "/ecs/callcenter-${var.env}-hitl"
+  retention_in_days = 30
+}
+
+resource "aws_iam_role" "ecs_task" {
+  name = "callcenter-${var.env}-hitl-task"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "ecs-tasks.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+# G5 / G6 / G11 + ADR-006: DDB scoped to table+index, only Query/GetItem/UpdateItem,
+# S3 GetObject for masked+raw, KMS Decrypt for 3 CMK only, logs scoped to log group.
+resource "aws_iam_role_policy" "ecs_task" {
+  role = aws_iam_role.ecs_task.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect = "Allow"
+        Action = [
+          "dynamodb:Query",
+          "dynamodb:GetItem",
+          "dynamodb:UpdateItem",
+        ]
+        Resource = [
+          var.ddb_consult_arn,
+          "${var.ddb_consult_arn}/index/*",
+        ]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["s3:GetObject"]
+        Resource = ["${var.bucket_masked_arn}/*", "${var.bucket_raw_arn}/*"]
+      },
+      {
+        Effect = "Allow"
+        Action = ["kms:Decrypt"]
+        # ADR-006: ddb (read encrypted items) + masked (transcript) + raw
+        # (compliance presigned download). analytics CMK is intentionally absent.
+        Resource = [
+          var.kms_ddb_arn,
+          var.kms_masked_arn,
+          var.kms_raw_arn,
+        ]
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "logs:CreateLogStream",
+          "logs:PutLogEvents",
+        ]
+        Resource = "${aws_cloudwatch_log_group.hitl.arn}:*"
+      },
+    ]
+  })
+}
+
+resource "aws_iam_role" "ecs_exec" {
+  name = "callcenter-${var.env}-hitl-exec"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "ecs-tasks.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "ecs_exec" {
+  role       = aws_iam_role.ecs_exec.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+}
+
+resource "aws_ecs_task_definition" "hitl" {
+  family                   = "callcenter-${var.env}-hitl"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = "512"
+  memory                   = "1024"
+  execution_role_arn       = aws_iam_role.ecs_exec.arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
+
+  container_definitions = jsonencode([
+    {
+      name      = "streamlit"
+      image     = "${aws_ecr_repository.hitl.repository_url}:latest"
+      essential = true
+      portMappings = [{
+        containerPort = 8501
+        hostPort      = 8501
+      }]
+      environment = [
+        { name = "ENV", value = var.env },
+        { name = "DDB_TABLE", value = "callcenter-${var.env}-consult-results" },
+      ]
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.hitl.name
+          awslogs-region        = "ap-northeast-2"
+          awslogs-stream-prefix = "streamlit"
+        }
+      }
+    }
+  ])
+}
+
+resource "aws_ecs_service" "hitl" {
+  name            = "callcenter-${var.env}-hitl"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.hitl.arn
+  desired_count   = 1
+  launch_type     = "FARGATE"
+
+  network_configuration {
+    subnets          = var.private_subnet_ids
+    security_groups  = [aws_security_group.ecs.id]
+    assign_public_ip = false
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.hitl.arn
+    container_name   = "streamlit"
+    container_port   = 8501
+  }
+
+  # Tag mutability is enforced at ECR, but ECS service desired count is 1 in dev.
+  # PR-prd will move this to 2+ for HA.
+}

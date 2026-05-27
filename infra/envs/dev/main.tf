@@ -104,3 +104,21 @@ module "observability" {
   lambda_persist_name  = module.classify_pipeline.persist_name
   lambda_pii_name      = module.classify_pipeline.pii_guard_name
 }
+
+# PR8 — HITL UI. acm_certificate_arn 은 사내 PKI 발급 후 var 로 주입.
+# 미발급 상태에서도 ECR / Cognito / ECS / ALB 까지는 apply 진행 가능
+# (HTTPS listener 만 count=0 으로 비활성화).
+module "hitl_ui" {
+  source = "../../modules/hitl-ui"
+
+  env                = var.env
+  vpc_id             = module.shared.vpc_id
+  private_subnet_ids = module.shared.private_subnet_ids
+  ddb_consult_arn    = module.storage.ddb_consult_arn
+  bucket_masked_arn  = module.storage.bucket_masked_arn
+  bucket_raw_arn     = module.storage.bucket_raw_arn
+  kms_ddb_arn        = module.storage.kms_ddb_arn
+  kms_masked_arn     = module.storage.kms_masked_arn
+  kms_raw_arn        = module.storage.kms_raw_arn
+  # acm_certificate_arn = ""  # default — HTTPS listener disabled until cert issued
+}
