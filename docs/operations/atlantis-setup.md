@@ -11,6 +11,44 @@
 | Repo allowlist | `github.com/Atom-oh/*` (이미 적용) |
 | Atlantis IRSA | `<ATLANTIS_IRSA_ROLE>` (AWS 계정 `<ACCOUNT_ID>`) |
 | 본 리포 설정 | `atlantis.yaml` (저장소 루트) |
+| tfstate 버킷 | `<YOUR_TFSTATE_BUCKET>` (ap-northeast-2, 공유) |
+| tfstate lock | 없음 (non-prod / single operator, TF 1.10+ 업그레이드 시 `use_lockfile=true` 로 전환) |
+
+## 통합 tfstate 정책
+
+Atlantis 가 관리하는 신규 프로젝트들은 ap-northeast-2 의 단일 S3 버킷 `<YOUR_TFSTATE_BUCKET>` 를 공유합니다. 프로젝트별 격리는 **key prefix** 로 합니다:
+
+| 프로젝트 | key prefix 예시 |
+|---|---|
+| call-center-admin | `call-center-admin/envs/dev.tfstate` |
+| (향후 프로젝트) | `<project-slug>/<...>.tfstate` |
+
+### 버킷 부트스트랩 (1회, CLI 수동)
+
+Bootstrap 은 Terraform 이 아닌 AWS CLI 로 1회 실행합니다. Terraform 이 backend 로 자기 자신을 만드는 chicken-and-egg 를 피하기 위함입니다.
+
+```bash
+aws s3api create-bucket \
+  --bucket <YOUR_TFSTATE_BUCKET> \
+  --region ap-northeast-2 \
+  --create-bucket-configuration LocationConstraint=ap-northeast-2
+
+aws s3api put-bucket-versioning \
+  --bucket <YOUR_TFSTATE_BUCKET> \
+  --versioning-configuration Status=Enabled
+
+aws s3api put-bucket-encryption \
+  --bucket <YOUR_TFSTATE_BUCKET> \
+  --server-side-encryption-configuration \
+    '{"Rules":[{"ApplyServerSideEncryptionByDefault":{"SSEAlgorithm":"AES256"}}]}'
+
+aws s3api put-public-access-block \
+  --bucket <YOUR_TFSTATE_BUCKET> \
+  --public-access-block-configuration \
+    BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
+```
+
+> 참고: 기존 `<LEGACY_TFSTATE_BUCKET>` 버킷 (us-east-1) 은 <INFRA_REPO> 과 multi-region-architecture 가 계속 사용. 향후 같은 새 버킷으로 마이그레이션 가능 (별도 작업).
 
 ## 운영 흐름
 

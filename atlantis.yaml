@@ -38,10 +38,15 @@ parallel_apply: false
 delete_source_branch_on_merge: false
 
 projects:
+  # dev env uses the shared tfstate bucket `<YOUR_TFSTATE_BUCKET>`
+  # (ap-northeast-2). The bucket is CLI-bootstrapped one-time outside
+  # Terraform — see docs/operations/atlantis-setup.md.
+  # Key prefix: call-center-admin/envs/dev.tfstate
+  # No DDB lock — non-prod / single operator.
   - name: dev
     dir: infra/envs/dev
     workspace: default
-    terraform_version: v1.9.8
+    terraform_version: v1.9.6
     autoplan:
       enabled: true
       when_modified:
@@ -49,41 +54,33 @@ projects:
         - "../../modules/**/*.tf"
         - "../../../atlantis.yaml"
     apply_requirements:
-      - approved
       - mergeable
-    workflow: callcenter-tf
 
   # Uncomment when infra/envs/stg exists.
   # - name: stg
   #   dir: infra/envs/stg
   #   workspace: default
-  #   terraform_version: v1.9.8
+  #   terraform_version: v1.9.6
   #   autoplan:
   #     enabled: false
   #   apply_requirements:
   #     - approved
   #     - mergeable
-  #   workflow: callcenter-tf
 
   # Uncomment when infra/envs/prd exists.
   # - name: prd
   #   dir: infra/envs/prd
   #   workspace: default
-  #   terraform_version: v1.9.8
+  #   terraform_version: v1.9.6
   #   autoplan:
   #     enabled: false
   #   apply_requirements:
   #     - approved
   #     - mergeable
-  #   workflow: callcenter-tf
 
-workflows:
-  callcenter-tf:
-    plan:
-      steps:
-        - init:
-            extra_args: ["-reconfigure"]
-        - plan
-    apply:
-      steps:
-        - apply
+# Custom workflows are NOT declared here. The server-side repos.yaml
+# (in Atom-oh/<INFRA_REPO>: k8s/system/atlantis/configmap.yaml)
+# declares the `standard` workflow which all projects above use by default.
+# To declare custom workflows in this file, the server-side repo config
+# for github.com/Atom-oh/call-center-admin would need
+# `allow_custom_workflows: true`.

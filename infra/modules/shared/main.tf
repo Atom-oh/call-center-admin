@@ -48,9 +48,10 @@ resource "aws_vpc_endpoint" "s3" {
 }
 
 locals {
+  # NOTE: DynamoDB is a Gateway endpoint (like S3), not Interface — kept
+  # separate below. Including it here fails with "Private DNS not supported".
   interface_services = [
     "bedrock-runtime",
-    "dynamodb",
     "kms",
     "states",
     "secretsmanager",
@@ -68,4 +69,11 @@ resource "aws_vpc_endpoint" "interface" {
   subnet_ids          = aws_subnet.private[*].id
   security_group_ids  = [aws_security_group.vpc_endpoints.id]
   private_dns_enabled = true
+}
+
+resource "aws_vpc_endpoint" "dynamodb" {
+  vpc_id            = aws_vpc.main.id
+  service_name      = "com.amazonaws.ap-northeast-2.dynamodb"
+  vpc_endpoint_type = "Gateway"
+  route_table_ids   = [aws_vpc.main.main_route_table_id]
 }
