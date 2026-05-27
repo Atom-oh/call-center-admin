@@ -149,7 +149,7 @@ call-center-admin/
 
 2. **본 자율 실행 결과 코드 리뷰**: 27개 신규 커밋 (`5cb2079..c8c867a`). 특히 다음 결정점 확인:
    - 한글 attribute (`category_대code`) DDB 컬럼 — 다운스트림 BI 도구 호환성
-   - Bedrock model ID — `apac.anthropic.claude-opus-4-7-20260101-v1:0`, `apac.anthropic.claude-sonnet-4-6-20260101-v1:0` (APAC cross-region inference profile; ap-northeast-2 에서 foundation-model 직접 호출은 불가하므로 `apac.` prefix 필수)
+   - Bedrock model ID — `global.anthropic.claude-opus-4-7`, `global.anthropic.claude-sonnet-4-6` (ap-northeast-2 Seoul 은 In-Region 및 Geo CRIS 미지원이고 Global CRIS 만 가능하므로 `global.` prefix 필수. 날짜/버전 접미사 없음 — Claude 4 모델은 AWS 도큐먼트 그대로 사용)
    - SFN 멤핑 게이트: confidence < 0.80에 verify, ≥ 0.80에 MarkAutoHigh — 임계값 조정 의향
 
 3. **dev `terraform apply`**:
