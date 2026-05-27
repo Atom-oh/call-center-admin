@@ -345,12 +345,12 @@ resource "aws_iam_role_policy" "persist" {
         Resource = var.kms_ddb_arn
       },
       {
-        # PR7 will narrow this to the specific delivery stream ARN once
-        # firehose_name is populated. With firehose_name="" the persist
-        # handler skips put_record entirely, so this allow-all is dormant.
+        # PR7 narrows this to the specific delivery stream ARN once firehose_arn is set.
+        # With firehose_arn="" the persist handler skips put_record entirely and this
+        # allow-all is dormant.
         Effect   = "Allow"
         Action   = ["firehose:PutRecord", "firehose:PutRecordBatch"]
-        Resource = "*"
+        Resource = var.firehose_arn != "" ? var.firehose_arn : "*"
       },
       {
         Effect   = "Allow"
