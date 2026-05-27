@@ -149,7 +149,7 @@ call-center-admin/
 
 2. **본 자율 실행 결과 코드 리뷰**: 27개 신규 커밋 (`5cb2079..c8c867a`). 특히 다음 결정점 확인:
    - 한글 attribute (`category_대code`) DDB 컬럼 — 다운스트림 BI 도구 호환성
-   - Bedrock model ID — `anthropic.claude-opus-4-7-20260101-v1:0`, `anthropic.claude-sonnet-4-6-20260101-v1:0` 가 실제 서울 리전에서 사용 가능한지
+   - Bedrock model ID — `apac.anthropic.claude-opus-4-7-20260101-v1:0`, `apac.anthropic.claude-sonnet-4-6-20260101-v1:0` (APAC cross-region inference profile; ap-northeast-2 에서 foundation-model 직접 호출은 불가하므로 `apac.` prefix 필수)
    - SFN 멤핑 게이트: confidence < 0.80에 verify, ≥ 0.80에 MarkAutoHigh — 임계값 조정 의향
 
 3. **dev `terraform apply`**:

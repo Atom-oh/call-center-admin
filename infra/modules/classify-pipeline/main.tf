@@ -213,7 +213,7 @@ resource "aws_lambda_function" "classify" {
 
   environment {
     variables = {
-      MODEL_ID   = "anthropic.claude-opus-4-7-20260101-v1:0"
+      MODEL_ID   = "apac.anthropic.claude-opus-4-7-20260101-v1:0"
       PROMPT_DIR = "/var/task/prompts/v1.0"
     }
   }
@@ -281,7 +281,7 @@ resource "aws_lambda_function" "verify" {
 
   environment {
     variables = {
-      VERIFY_MODEL_ID = "anthropic.claude-sonnet-4-6-20260101-v1:0"
+      VERIFY_MODEL_ID = "apac.anthropic.claude-sonnet-4-6-20260101-v1:0"
       PROMPT_DIR      = "/var/task/prompts/v1.0"
     }
   }
