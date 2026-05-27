@@ -172,11 +172,12 @@ resource "aws_dynamodb_table" "consult_results" {
   }
 
   global_secondary_index {
-    # NOTE: index name aligned with attribute name (`category_대code`).
-    # Renaming after first `terraform apply` requires DDB table replacement,
-    # so fixed in PR2 before any apply. Plan/spec text uses the older
-    # `category대code-...` form — the storage module is the source of truth.
-    name            = "category_대code-classifiedAt-index"
+    # AWS DDB index NAMES must match [a-zA-Z0-9_.-]+ (no Korean chars).
+    # The attribute name CAN be `category_대code` (DDB allows Unicode in
+    # attribute names), but the index name itself must be ASCII. `daecode`
+    # is 대code romanized — preserves relationship to the attribute in
+    # code search.
+    name            = "category-daecode-classifiedAt-index"
     hash_key        = "category_대code"
     range_key       = "classifiedAt"
     projection_type = "ALL"
