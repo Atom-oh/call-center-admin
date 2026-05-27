@@ -40,6 +40,7 @@ delete_source_branch_on_merge: false
 projects:
   # Bootstrap: state bucket + DDB lock table. No remote backend (local state).
   # Must be applied before `dev` can `terraform init` successfully.
+  # Uses the server-side `standard` workflow (init + plan, apply).
   - name: shared-state
     dir: infra/shared-state
     workspace: default
@@ -52,7 +53,6 @@ projects:
     apply_requirements:
       - approved
       - mergeable
-    workflow: callcenter-bootstrap
 
   - name: dev
     dir: infra/envs/dev
@@ -67,7 +67,6 @@ projects:
     apply_requirements:
       - approved
       - mergeable
-    workflow: callcenter-tf
 
   # Uncomment when infra/envs/stg exists.
   # - name: stg
@@ -79,7 +78,6 @@ projects:
   #   apply_requirements:
   #     - approved
   #     - mergeable
-  #   workflow: callcenter-tf
 
   # Uncomment when infra/envs/prd exists.
   # - name: prd
@@ -91,28 +89,10 @@ projects:
   #   apply_requirements:
   #     - approved
   #     - mergeable
-  #   workflow: callcenter-tf
 
-workflows:
-  callcenter-tf:
-    plan:
-      steps:
-        - init:
-            extra_args: ["-reconfigure"]
-        - plan
-    apply:
-      steps:
-        - apply
-
-  # shared-state has no remote backend, so `terraform init` does not need
-  # `-reconfigure`. State persists only in the working directory between
-  # plan and apply (Atlantis keeps the workspace per PR). After first apply,
-  # the tfstate file is committed back as an artifact in the Atlantis volume.
-  callcenter-bootstrap:
-    plan:
-      steps:
-        - init
-        - plan
-    apply:
-      steps:
-        - apply
+# Custom workflows are NOT declared here. The server-side repos.yaml
+# (in Atom-oh/AWS-Demo-Platform: k8s/system/atlantis/configmap.yaml)
+# declares the `standard` workflow which all projects above use by default.
+# To declare custom workflows in this file, the server-side repo config
+# for github.com/Atom-oh/call-center-admin would need
+# `allow_custom_workflows: true`.
