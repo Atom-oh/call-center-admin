@@ -1,0 +1,89 @@
+# Atlantis configuration for call-center-admin.
+# Replaces .github/workflows/terraform-{plan,apply}.yml.
+#
+# Server: https://<ATLANTIS_SERVER_URL>  (running on <INFRA_REPO> hub EKS)
+# GitHub App: <ATLANTIS_GITHUB_APP> (webhook auth, no per-repo PAT needed)
+# Repo allowlist: github.com/Atom-oh/*  (already satisfied)
+#
+# Workflow:
+#   1. Open a PR that touches infra/**         → Atlantis auto-runs `plan`, posts to PR
+#   2. Comment `atlantis plan` to re-run        (or `atlantis plan -p dev`)
+#   3. Comment `atlantis apply` after review    (or `atlantis apply -p dev`)
+#   4. Merge PR
+#
+# IMPORTANT — IAM PREREQUISITE:
+# The Atlantis pod runs as IRSA `<ATLANTIS_IRSA_ROLE>` (in account <ACCOUNT_ID>).
+# To drive Terraform here, one of the following must be set up:
+#
+#   Option A (recommended): grant <ATLANTIS_IRSA_ROLE> permission to AssumeRole into
+#     `callcenter-github-actions-tf-plan` and `callcenter-github-actions-tf-apply-dev`
+#     (and the stg/prd equivalents), then add an `assume_role` block to the
+#     provider in each env's main.tf:
+#
+#         provider "aws" {
+#           region = "ap-northeast-2"
+#           assume_role { role_arn = "arn:aws:iam::<acct>:role/callcenter-...-tf-apply-dev" }
+#         }
+#
+#   Option B: extend <ATLANTIS_IRSA_ROLE>'s policy with the resource permissions
+#     this project needs (Bedrock, Lambda, SFN, S3, DDB, KMS, etc.) — less clean
+#     but avoids the trust-policy edit.
+#
+# Without one of these, `terraform plan` will fail with credentials errors.
+
+version: 3
+automerge: false
+parallel_plan: false
+parallel_apply: false
+delete_source_branch_on_merge: false
+
+projects:
+  - name: dev
+    dir: infra/envs/dev
+    workspace: default
+    terraform_version: v1.9.8
+    autoplan:
+      enabled: true
+      when_modified:
+        - "*.tf"
+        - "../../modules/**/*.tf"
+        - "../../../atlantis.yaml"
+    apply_requirements:
+      - approved
+      - mergeable
+    workflow: callcenter-tf
+
+  # Uncomment when infra/envs/stg exists.
+  # - name: stg
+  #   dir: infra/envs/stg
+  #   workspace: default
+  #   terraform_version: v1.9.8
+  #   autoplan:
+  #     enabled: false
+  #   apply_requirements:
+  #     - approved
+  #     - mergeable
+  #   workflow: callcenter-tf
+
+  # Uncomment when infra/envs/prd exists.
+  # - name: prd
+  #   dir: infra/envs/prd
+  #   workspace: default
+  #   terraform_version: v1.9.8
+  #   autoplan:
+  #     enabled: false
+  #   apply_requirements:
+  #     - approved
+  #     - mergeable
+  #   workflow: callcenter-tf
+
+workflows:
+  callcenter-tf:
+    plan:
+      steps:
+        - init:
+            extra_args: ["-reconfigure"]
+        - plan
+    apply:
+      steps:
+        - apply
