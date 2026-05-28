@@ -88,4 +88,22 @@ module "observability" {
   lambda_pii_name      = module.classify_pipeline.pii_guard_name
 }
 
-# hitl_ui module 은 PR8 머지 후 별도 follow-up 에서 추가.
+module "hitl_ui" {
+  source = "../../modules/hitl-ui"
+
+  env                = var.env
+  vpc_id             = module.shared.vpc_id
+  private_subnet_ids = module.shared.private_subnet_ids
+  ddb_consult_arn    = module.storage.ddb_consult_arn
+  bucket_masked_arn  = module.storage.bucket_masked_arn
+  bucket_raw_arn     = module.storage.bucket_raw_arn
+  kms_ddb_arn        = module.storage.kms_ddb_arn
+  kms_masked_arn     = module.storage.kms_masked_arn
+  kms_raw_arn        = module.storage.kms_raw_arn
+
+  # ADR-012: stg 도 prd 와 동일한 5년 보존 — 운영 정책 일관성. dev 는
+  # 비용 절감을 위해 module default (365d) 유지.
+  audit_retention_days = 1825
+
+  # acm_certificate_arn / callback_domain / image_tag — 운영팀이 deploy 시점에 주입.
+}
