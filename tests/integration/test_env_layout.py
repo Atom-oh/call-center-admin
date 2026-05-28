@@ -14,14 +14,13 @@ import pytest
 REPO_ROOT = Path(__file__).parent.parent.parent
 ENVS = ("dev", "stg", "prd")
 REQUIRED_FILES = ("backend.tf", "main.tf", "outputs.tf", "variables.tf")
-# hitl_ui module 은 PR8 머지 후 별도 follow-up 으로 dev/stg/prd 에 추가.
-# 본 PR10 의 REQUIRED_MODULES 는 PR9 머지된 main 기준으로 6 module.
 REQUIRED_MODULES = (
     "shared",
     "storage",
     "analytics",
     "classify_pipeline",
     "observability",
+    "hitl_ui",
 )
 
 
@@ -87,4 +86,39 @@ def test_outputs_are_consistent_across_envs() -> None:
         f"  dev only: {sets['dev'] - sets['stg'] - sets['prd']!r}\n"
         f"  stg only: {sets['stg'] - sets['dev'] - sets['prd']!r}\n"
         f"  prd only: {sets['prd'] - sets['dev'] - sets['stg']!r}"
+    )
+
+
+@pytest.mark.parametrize("env", ENVS)
+def test_atlantis_yaml_has_project_for_env(env: str) -> None:
+    """Atlantis project mapping must exist for every env directory.
+
+    PR #15 의 머지 후 stg/prd 디렉토리는 만들어졌으나 atlantis.yaml 이
+    dev 만 매핑하고 있어 stg/prd 의 `atlantis plan` 이 "0 projects" 로
+    return 됐다. 본 가드는 atlantis.yaml 의 projects 블록에 모든 env 가
+    포함되는지 강제 — env 디렉토리 신규 시 atlantis.yaml 동시 갱신 누락 방지.
+
+    추가 검증 (PR #16 review): 각 project block 에 `mergeable` apply_requirement
+    가 포함되어야 한다. atlantis 가 미머지 PR 의 apply 를 거부하는 핵심 gate.
+    """
+    yaml = (REPO_ROOT / "atlantis.yaml").read_text(encoding="utf-8")
+    # Match a project entry with the env name AND its matching dir.
+    project_pat = re.compile(rf"-\s+name:\s+{env}\s*\n\s+dir:\s+infra/envs/{env}\b", re.MULTILINE)
+    match = project_pat.search(yaml)
+    assert match, (
+        f"atlantis.yaml is missing the `name: {env}` / `dir: infra/envs/{env}` project block — "
+        "`atlantis plan` for that env will detect 0 projects."
+    )
+
+    # Extract the block — from the project entry header to the next "- name:" or EOF.
+    block_start = match.start()
+    next_match = re.search(r"\n  - name:", yaml[match.end():])
+    block_end = match.end() + next_match.start() if next_match else len(yaml)
+    block = yaml[block_start:block_end]
+
+    assert "apply_requirements" in block, (
+        f"atlantis.yaml `{env}` project block has no apply_requirements"
+    )
+    assert "mergeable" in block, (
+        f"atlantis.yaml `{env}` project block must require `mergeable` before apply"
     )

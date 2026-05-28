@@ -17,6 +17,7 @@ Phase 1 (콜센터 STT 자동 분류 시스템) 의 10 개 ADR. 각 ADR 은 의�
 | [ADR-009](ADR-009-atlantis-for-terraform-deployment.md) | Atlantis 로 Terraform 처리 | Accepted | 배포 / CI |
 | [ADR-010](ADR-010-global-bedrock-cris.md) | global Bedrock CRIS | Accepted | Bedrock 통합 / latency |
 | [ADR-011](ADR-011-hitl-ui-streamlit-on-fargate.md) | HITL UI = Streamlit on Fargate + ALB authenticate-cognito | Accepted | UI / Fargate / Cognito |
+| [ADR-012](ADR-012-audit-log-retention-5-years.md) | HITL 감사 로그 5년 보존 (전자금융거래법 §22) | Accepted | 컴플라이언스 / 비용 |
 
 ## 작성 규칙
 
