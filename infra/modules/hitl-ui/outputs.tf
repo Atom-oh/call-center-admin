@@ -27,6 +27,7 @@ output "ecs_cluster_name" {
 }
 
 output "ecs_service_name" {
-  value       = aws_ecs_service.hitl.name
-  description = "ECS service name — used for `aws ecs update-service --force-new-deployment`."
+  # ECS service is count-gated on acm_certificate_arn; stays empty until cert is wired.
+  value       = length(aws_ecs_service.hitl) > 0 ? aws_ecs_service.hitl[0].name : ""
+  description = "ECS service name — empty until acm_certificate_arn is set."
 }
