@@ -103,7 +103,7 @@ module "hitl_ui" {
 
   # ADR-012: 전자금융거래법 §22 — HITL 정정·다운로드 이벤트는 5년 보존.
   # prd 는 module default(365d)를 명시적으로 override 하여 컴플라이언스 충족.
-  audit_retention_days = 1825
+  audit_retention_days = 1827
 
   # acm_certificate_arn / callback_domain / image_tag — 운영팀이 deploy 시점에 주입.
 }
