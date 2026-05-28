@@ -148,6 +148,11 @@ resource "aws_lb" "hitl" {
 }
 
 resource "aws_lb_target_group" "hitl" {
+  # Gated on ACM cert: without an HTTPS listener (and thus without a default
+  # action forwarding to this target group) the TG has no associated LB, which
+  # makes `aws_ecs_service.load_balancer` reject the attach. Count=0 until the
+  # cert is wired in.
+  count       = var.acm_certificate_arn != "" ? 1 : 0
   name        = "callcenter-${var.env}-hitl-tg"
   port        = 8501
   protocol    = "HTTP"
@@ -197,7 +202,7 @@ resource "aws_lb_listener" "https" {
   default_action {
     order            = 2
     type             = "forward"
-    target_group_arn = aws_lb_target_group.hitl.arn
+    target_group_arn = aws_lb_target_group.hitl[0].arn
   }
 }
 
@@ -345,6 +350,11 @@ resource "aws_ecs_task_definition" "hitl" {
 }
 
 resource "aws_ecs_service" "hitl" {
+  # Same gate as the target group: ECS service cannot attach to a TG that has
+  # no LB association, so we skip ECS service stand-up until ACM is ready.
+  # Cluster / task_definition / log group / IAM / ECR still get created so
+  # subsequent docker push can proceed before cert issuance.
+  count           = var.acm_certificate_arn != "" ? 1 : 0
   name            = "callcenter-${var.env}-hitl"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.hitl.arn
@@ -358,7 +368,7 @@ resource "aws_ecs_service" "hitl" {
   }
 
   load_balancer {
-    target_group_arn = aws_lb_target_group.hitl.arn
+    target_group_arn = aws_lb_target_group.hitl[0].arn
     container_name   = "streamlit"
     container_port   = 8501
   }
