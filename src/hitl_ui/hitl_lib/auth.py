@@ -93,12 +93,22 @@ def _verify_signature(jwt_like: str) -> dict[str, Any]:
     """Verify the JWT signature against the ALB public key.
 
     Returns the decoded payload on success, empty dict on failure. Failure
-    modes: missing kid, public key fetch failure, signature mismatch.
+    modes: missing kid, public key fetch failure, signature mismatch, or
+    crypto deps unavailable (fail-closed in prd-like envs).
+
+    M1 from 2nd AI review: when PyJWT/cryptography are unavailable, only the
+    LOCAL_DEV escape allows unverified decode (for unit tests / desktop dev).
+    Any other environment must refuse to issue claims — silent unverified
+    fallback would be a fail-open posture (CWE-754) for the auth layer.
     """
     if not _CRYPTO_AVAILABLE:
-        # In environments without PyJWT (unit tests, LOCAL_DEV), fall back to
-        # unverified decode. Production containers must have PyJWT installed.
-        return _decode_oidc_data(jwt_like)
+        if os.environ.get("LOCAL_DEV") == "1":
+            return _decode_oidc_data(jwt_like)
+        _logger.error(
+            "PyJWT/cryptography unavailable — refusing to issue claims "
+            "(fail-closed). Install PyJWT[crypto] in the container."
+        )
+        return {}
 
     header = _decode_jwt_header(jwt_like)
     kid = header.get("kid")

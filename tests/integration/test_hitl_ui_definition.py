@@ -120,6 +120,45 @@ def test_alb_listener_uses_tls13(main_tf: str) -> None:
     )
 
 
+def test_alb_listener_enforces_authenticate_cognito_before_forward(main_tf: str) -> None:
+    """C1 guard (2nd AI review): the HTTPS listener must run authenticate-cognito
+    BEFORE forward. A naive `path_pattern = "/*"` listener_rule would silently
+    bypass default_action — this test catches that anti-pattern.
+    """
+    listener_block = main_tf.split('aws_lb_listener" "https"')[1].split('resource "aws_')[0]
+    # Both actions must be present in the default_action chain.
+    assert "authenticate-cognito" in listener_block, (
+        "default_action must include authenticate-cognito"
+    )
+    assert (
+        'type             = "forward"' in listener_block or 'type = "forward"' in listener_block
+    ), "default_action must include forward"
+    # And the order must be authenticate-cognito (1) → forward (2).
+    auth_idx = listener_block.find("authenticate-cognito")
+    fwd_idx = listener_block.find('type             = "forward"')
+    if fwd_idx == -1:
+        fwd_idx = listener_block.find('type = "forward"')
+    assert auth_idx < fwd_idx, "authenticate-cognito must precede forward in default_action"
+
+
+def test_alb_has_no_path_pattern_forward_rule(main_tf: str) -> None:
+    """C1 negative guard: there must be NO listener_rule with `path_pattern = "/*"`
+    forwarding to the target group. That rule would short-circuit default_action
+    and bypass Cognito authentication entirely."""
+    # If any aws_lb_listener_rule exists, none of them may use path_pattern `/*` + forward.
+    if "aws_lb_listener_rule" not in main_tf:
+        return  # No rules at all is fine — default_action handles it.
+    # Search for the pattern "/*" combined with a forward action in the same block.
+    rule_blocks = main_tf.split('resource "aws_lb_listener_rule"')[1:]
+    for block in rule_blocks:
+        # The block ends at the next resource or EOF.
+        block = block.split('resource "aws_')[0]
+        if "path_pattern" in block and '"/*"' in block and 'type             = "forward"' in block:
+            raise AssertionError(
+                "listener_rule with path_pattern=`/*` + forward bypasses Cognito auth"
+            )
+
+
 # ──────────────────────────────────────────────────────────────────────────
 # ADR-006 — KMS scope (3 CMK granted, analytics NOT granted)
 # ──────────────────────────────────────────────────────────────────────────
