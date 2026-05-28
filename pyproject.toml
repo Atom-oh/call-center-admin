@@ -29,6 +29,13 @@ addopts = "-ra --strict-markers --cov=src --cov-report=term-missing"
 strict = true
 python_version = "3.12"
 
+# HITL UI Streamlit 진입점/페이지는 동적 페이지 등록 + Streamlit stub 부재로
+# strict 검사 의미 낮음. hitl_lib/ 만 strict 유지 (DDB / auth 핵심 로직).
+exclude = [
+  'src/hitl_ui/streamlit_app\.py$',
+  'src/hitl_ui/pages/',
+]
+
 # Bedrock Converse 의 cachePoint 필드는 boto3-stubs 의 SystemContentBlockTypeDef
 # TypedDict 에 아직 포함되지 않아 strict 모드에서 충돌. lib/bedrock_client.py 에서만
 # untyped dict 허용. Bedrock-stubs 가 cachePoint 를 정식 지원하면 제거.
@@ -37,6 +44,12 @@ module = "lib.bedrock_client"
 disallow_untyped_calls = false
 disallow_subclassing_any = false
 
+# PyJWT / cryptography 는 Python 3.9 로컬 환경에서 stub 없을 수 있음.
+# 컨테이너 build 시 requirements.txt 에서 설치되므로 실제 runtime 영향 없음.
+[[tool.mypy.overrides]]
+module = ["jwt", "cryptography.*"]
+ignore_missing_imports = true
+
 # moto + 한국어 attribute name 으로 인한 false-positive 가 많아 unit/integration
 # 테스트는 strict 완화. test 코드는 핸들러의 mock 행동 검증이 목적이지 typed API 가 아님.
 [[tool.mypy.overrides]]
@@ -44,3 +57,13 @@ module = "tests.*"
 disallow_untyped_defs = false
 disallow_untyped_decorators = false
 disallow_untyped_calls = false
+
+# Streamlit 은 stub 패키지가 없고 (types-streamlit 부재) HITL UI 의 페이지/엔트리는
+# 동적 페이지 등록 패턴이라 strict 검사 의미 낮음. hitl_lib 만 strict 유지.
+[[tool.mypy.overrides]]
+module = "streamlit"
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["streamlit_app", "pages.*"]
+ignore_errors = true

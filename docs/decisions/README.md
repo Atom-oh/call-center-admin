@@ -16,6 +16,7 @@ Phase 1 (콜센터 STT 자동 분류 시스템) 의 10 개 ADR. 각 ADR 은 의�
 | [ADR-008](ADR-008-korean-ddb-attribute-ascii-gsi-name.md) | 한국어 DDB 속성명 + ASCII GSI 명 | Accepted | DDB 스키마 |
 | [ADR-009](ADR-009-atlantis-for-terraform-deployment.md) | Atlantis 로 Terraform 처리 | Accepted | 배포 / CI |
 | [ADR-010](ADR-010-global-bedrock-cris.md) | global Bedrock CRIS | Accepted | Bedrock 통합 / latency |
+| [ADR-011](ADR-011-hitl-ui-streamlit-on-fargate.md) | HITL UI = Streamlit on Fargate + ALB authenticate-cognito | Accepted | UI / Fargate / Cognito |
 
 ## 작성 규칙
 
