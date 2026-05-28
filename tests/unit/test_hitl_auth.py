@@ -50,10 +50,24 @@ def test_decode_oidc_jwt_payload(fake_streamlit) -> None:
 
 
 def test_current_user_returns_email_from_oidc(fake_streamlit, monkeypatch) -> None:
-    """ALB injects X-Amzn-Oidc-Data — current_user reads the email claim."""
+    """ALB injects X-Amzn-Oidc-Data — current_user reads the email claim.
+
+    The signature verification path is exercised in production with PyJWT
+    installed; here we stub `_verify_signature` so we can validate the
+    claim-extraction logic independent of the crypto layer.
+    """
     monkeypatch.delenv("LOCAL_DEV", raising=False)
     jwt = _build_oidc_jwt({"email": "bob@example.com", "cognito:groups": ["analyst"]})
     fake_streamlit.context.headers = {"x-amzn-oidc-data": jwt}
+
+    # Stub verify so this test focuses on claim extraction, not crypto.
+    import hitl_lib.auth as auth_mod
+
+    monkeypatch.setattr(
+        auth_mod,
+        "_verify_signature",
+        lambda j: {"email": "bob@example.com", "cognito:groups": ["analyst"]},
+    )
 
     from hitl_lib.auth import current_user
 
@@ -65,6 +79,14 @@ def test_current_groups_returns_cognito_groups(fake_streamlit, monkeypatch) -> N
     monkeypatch.delenv("LOCAL_DEV", raising=False)
     jwt = _build_oidc_jwt({"email": "c@example.com", "cognito:groups": ["compliance", "ops"]})
     fake_streamlit.context.headers = {"x-amzn-oidc-data": jwt}
+
+    import hitl_lib.auth as auth_mod
+
+    monkeypatch.setattr(
+        auth_mod,
+        "_verify_signature",
+        lambda j: {"email": "c@example.com", "cognito:groups": ["compliance", "ops"]},
+    )
 
     from hitl_lib.auth import current_groups
 
@@ -91,5 +113,25 @@ def test_local_dev_escape_disabled_when_env_unset(fake_streamlit, monkeypatch) -
 
     from hitl_lib.auth import current_groups, current_user
 
+    assert current_user() == "unknown"
+    assert current_groups() == []
+
+
+def test_fail_closed_when_crypto_unavailable_and_not_local_dev(fake_streamlit, monkeypatch) -> None:
+    """M1 from 2nd AI review: when PyJWT/cryptography are unavailable AND
+    LOCAL_DEV is not set, _verify_signature MUST return an empty dict so the
+    auth layer refuses to issue any claims (fail-closed, never fail-open)."""
+    monkeypatch.delenv("LOCAL_DEV", raising=False)
+    jwt = _build_oidc_jwt({"email": "attacker@example.com", "cognito:groups": ["ops"]})
+    fake_streamlit.context.headers = {"x-amzn-oidc-data": jwt}
+
+    import hitl_lib.auth as auth_mod
+
+    # Force the crypto-unavailable branch.
+    monkeypatch.setattr(auth_mod, "_CRYPTO_AVAILABLE", False)
+
+    from hitl_lib.auth import current_groups, current_user
+
+    # Even with a valid-looking header, no claims must be issued.
     assert current_user() == "unknown"
     assert current_groups() == []

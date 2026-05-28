@@ -81,3 +81,14 @@ variable "audit_retention_days" {
   default     = 365
   description = "Retention for the audit log group (HITL correction / compliance download events)."
 }
+
+# M2 from 2nd AI review: the Cognito user pool client's callback URL must match
+# the actual ALB DNS / internal domain. Hardcoding `hitl.callcenter-{env}.kakaopay.internal`
+# fails when (a) the internal domain isn't issued yet, or (b) the dev/stg cluster
+# uses a different DNS. Default is a placeholder to force explicit decision at
+# deploy time.
+variable "callback_domain" {
+  type        = string
+  default     = "REPLACE_ME"
+  description = "FQDN behind which the ALB is reachable (e.g. hitl.callcenter-dev.kakaopay.internal). Used to build the Cognito callback URL."
+}

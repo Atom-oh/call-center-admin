@@ -50,14 +50,18 @@ resource "aws_cognito_user_pool" "main" {
 }
 
 resource "aws_cognito_user_pool_client" "alb" {
-  name                                 = "callcenter-${var.env}-alb-client"
-  user_pool_id                         = aws_cognito_user_pool.main.id
-  generate_secret                      = true
-  callback_urls                        = ["https://hitl.callcenter-${var.env}.kakaopay.internal/oauth2/idpresponse"]
+  name            = "callcenter-${var.env}-alb-client"
+  user_pool_id    = aws_cognito_user_pool.main.id
+  generate_secret = true
+  # M2 from 2nd AI review: callback URL is built from var.callback_domain so the
+  # actual deploy-time FQDN (which may differ from the convention) is used.
+  callback_urls                        = ["https://${var.callback_domain}/oauth2/idpresponse"]
   allowed_oauth_flows                  = ["code"]
   allowed_oauth_scopes                 = ["openid", "email", "profile"]
   allowed_oauth_flows_user_pool_client = true
   supported_identity_providers         = ["COGNITO"]
+  # AI review (Suggestions): hide username enumeration responses.
+  prevent_user_existence_errors = "ENABLED"
 }
 
 resource "aws_cognito_user_pool_domain" "main" {
@@ -163,6 +167,12 @@ resource "aws_lb_target_group" "hitl" {
 # bootstrap before cert issuance), the listener block is created in count=0
 # mode and the ALB has no listener — apply will succeed but the service is
 # unreachable until ACM is wired in. This avoids the data-source chicken-and-egg.
+#
+# C1 from 2nd AI review: do NOT use a listener_rule with `path_pattern = ["/*"]`.
+# It would match every request and skip the listener's default_action — the
+# Cognito authenticate step would be silently bypassed. Instead, chain two
+# default_action blocks via `order` so EVERY request is forced through
+# authenticate-cognito (order=1) BEFORE forward (order=2).
 resource "aws_lb_listener" "https" {
   count             = var.acm_certificate_arn != "" ? 1 : 0
   load_balancer_arn = aws_lb.hitl.arn
@@ -171,8 +181,10 @@ resource "aws_lb_listener" "https" {
   certificate_arn   = var.acm_certificate_arn
   ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
 
+  # Order 1: enforce Cognito authentication for every request.
   default_action {
-    type = "authenticate-cognito"
+    order = 1
+    type  = "authenticate-cognito"
 
     authenticate_cognito {
       user_pool_arn       = aws_cognito_user_pool.main.arn
@@ -180,22 +192,12 @@ resource "aws_lb_listener" "https" {
       user_pool_domain    = aws_cognito_user_pool_domain.main.domain
     }
   }
-}
 
-resource "aws_lb_listener_rule" "forward" {
-  count        = var.acm_certificate_arn != "" ? 1 : 0
-  listener_arn = aws_lb_listener.https[0].arn
-  priority     = 100
-
-  action {
+  # Order 2: forward authenticated traffic to the Streamlit target group.
+  default_action {
+    order            = 2
     type             = "forward"
     target_group_arn = aws_lb_target_group.hitl.arn
-  }
-
-  condition {
-    path_pattern {
-      values = ["/*"]
-    }
   }
 }
 
