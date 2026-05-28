@@ -21,6 +21,8 @@ from typing import Any
 
 import boto3
 
+from hitl_lib.audit import emit_audit
+
 _ddb = boto3.resource("dynamodb")
 _table = _ddb.Table(os.environ["DDB_TABLE"])
 
@@ -80,6 +82,14 @@ def update_correction(call_id: str, corrected_codes: dict[str, str], corrected_b
     The `reason` column is intentionally NOT touched — preserving the sanitized
     text from persist Lambda (ADR-003 Layer-3 PII guard).
     """
+    # M3: structured audit record so CloudTrail S3 / DDB events can be joined
+    # back to the Cognito user that initiated the change.
+    emit_audit(
+        "hitl.correction",
+        user=corrected_by,
+        call_id=call_id,
+        daecode=corrected_codes.get("대code"),
+    )
     _table.update_item(
         Key={"callId": call_id},
         UpdateExpression=(
@@ -106,6 +116,7 @@ def update_correction(call_id: str, corrected_codes: dict[str, str], corrected_b
 
 def update_skip(call_id: str, by: str) -> None:
     """Mark the row as hitl-skipped — codes are unchanged, only the status moves."""
+    emit_audit("hitl.skip", user=by, call_id=call_id)
     _table.update_item(
         Key={"callId": call_id},
         UpdateExpression="SET #s = :s, correctedAt = :ca, correctedBy = :cb",

@@ -44,6 +44,12 @@ module = "lib.bedrock_client"
 disallow_untyped_calls = false
 disallow_subclassing_any = false
 
+# PyJWT / cryptography 는 Python 3.9 로컬 환경에서 stub 없을 수 있음.
+# 컨테이너 build 시 requirements.txt 에서 설치되므로 실제 runtime 영향 없음.
+[[tool.mypy.overrides]]
+module = ["jwt", "cryptography.*"]
+ignore_missing_imports = true
+
 # moto + 한국어 attribute name 으로 인한 false-positive 가 많아 unit/integration
 # 테스트는 strict 완화. test 코드는 핸들러의 mock 행동 검증이 목적이지 typed API 가 아님.
 [[tool.mypy.overrides]]

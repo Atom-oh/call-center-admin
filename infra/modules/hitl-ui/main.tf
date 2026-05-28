@@ -209,7 +209,17 @@ resource "aws_ecs_cluster" "main" {
 
 resource "aws_cloudwatch_log_group" "hitl" {
   name              = "/ecs/callcenter-${var.env}-hitl"
-  retention_in_days = 30
+  retention_in_days = var.log_retention_days
+}
+
+# Separate audit log group (M3 from AI review): every correction / skip /
+# compliance presigned URL emission writes a structured JSON record here so
+# CloudTrail S3 GetObject events can be correlated with the Cognito user that
+# initiated the download. Retention is longer than the app log group because
+# the audit trail must outlive the application logs (finance domain).
+resource "aws_cloudwatch_log_group" "hitl_audit" {
+  name              = "/hitl-ui/audit/callcenter-${var.env}"
+  retention_in_days = var.audit_retention_days
 }
 
 resource "aws_iam_role" "ecs_task" {
@@ -265,7 +275,10 @@ resource "aws_iam_role_policy" "ecs_task" {
           "logs:CreateLogStream",
           "logs:PutLogEvents",
         ]
-        Resource = "${aws_cloudwatch_log_group.hitl.arn}:*"
+        Resource = [
+          "${aws_cloudwatch_log_group.hitl.arn}:*",
+          "${aws_cloudwatch_log_group.hitl_audit.arn}:*",
+        ]
       },
     ]
   })
@@ -299,8 +312,11 @@ resource "aws_ecs_task_definition" "hitl" {
 
   container_definitions = jsonencode([
     {
-      name      = "streamlit"
-      image     = "${aws_ecr_repository.hitl.repository_url}:latest"
+      name = "streamlit"
+      # M1 from AI Code Review: variable image tag so subsequent deploys can
+      # push a new tag against the IMMUTABLE ECR repository. PR10 CI/CD
+      # passes the commit SHA.
+      image     = "${aws_ecr_repository.hitl.repository_url}:${var.image_tag}"
       essential = true
       portMappings = [{
         containerPort = 8501
@@ -309,6 +325,10 @@ resource "aws_ecs_task_definition" "hitl" {
       environment = [
         { name = "ENV", value = var.env },
         { name = "DDB_TABLE", value = "callcenter-${var.env}-consult-results" },
+        # M2: ALB region for OIDC public key fetch.
+        { name = "ALB_REGION", value = var.alb_region },
+        # M3: audit log group name for the auth/compliance/correction trail.
+        { name = "AUDIT_LOG_GROUP", value = aws_cloudwatch_log_group.hitl_audit.name },
       ]
       logConfiguration = {
         logDriver = "awslogs"

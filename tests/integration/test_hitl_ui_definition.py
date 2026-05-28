@@ -67,16 +67,24 @@ def test_ecr_repo_is_immutable(main_tf: str) -> None:
 
 def test_cognito_password_policy_12_chars_4_classes(main_tf: str) -> None:
     """G9: passwords require length >= 12 and all 4 character classes."""
+    import re
+
     assert 'resource "aws_cognito_user_pool" "main"' in main_tf
     pool_block = main_tf.split('aws_cognito_user_pool" "main"')[1].split('resource "aws_')[0]
-    assert "minimum_length    = 12" in pool_block or "minimum_length = 12" in pool_block
+    # m6 from AI review: regex tolerates `terraform fmt` alignment changes.
+    assert re.search(r"minimum_length\s*=\s*12\b", pool_block), (
+        "minimum_length must be 12 (any spacing)"
+    )
     for req in (
         "require_lowercase",
         "require_uppercase",
         "require_numbers",
         "require_symbols",
     ):
-        assert req in pool_block and "true" in pool_block.split(req)[1].split("\n")[0]
+        # `<req>\s*=\s*true` — also tolerates alignment.
+        assert re.search(rf"{req}\s*=\s*true\b", pool_block), (
+            f"{req} must be set to true (any spacing)"
+        )
 
 
 def test_cognito_user_groups_define_three_roles(main_tf: str) -> None:
