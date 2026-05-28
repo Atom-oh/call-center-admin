@@ -92,7 +92,12 @@ resource "aws_cognito_user_group" "compliance" {
 ##################################################
 
 resource "aws_security_group" "alb" {
-  name        = "callcenter-${var.env}-hitl-alb"
+  # G description must be ASCII (AWS EC2 limitation).
+  # name_prefix + create_before_destroy: SG description is immutable in AWS;
+  # any description change requires replacement. To avoid dependency violations
+  # (ALB / ECS task ENIs reference the old SG), use create_before_destroy with
+  # a name_prefix so the new SG comes up before the old one is detached.
+  name_prefix = "callcenter-${var.env}-hitl-alb-"
   description = "Internal ALB ingress for HITL UI (intranet CIDR only)"
   vpc_id      = var.vpc_id
 
@@ -111,10 +116,14 @@ resource "aws_security_group" "alb" {
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
   }
+
+  lifecycle {
+    create_before_destroy = true
+  }
 }
 
 resource "aws_security_group" "ecs" {
-  name        = "callcenter-${var.env}-hitl-ecs"
+  name_prefix = "callcenter-${var.env}-hitl-ecs-"
   description = "ECS task security group (ingress only from ALB SG)"
   vpc_id      = var.vpc_id
 
@@ -132,6 +141,10 @@ resource "aws_security_group" "ecs" {
     to_port     = 0
     protocol    = "-1"
     cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  lifecycle {
+    create_before_destroy = true
   }
 }
 
