@@ -1,6 +1,14 @@
 output "alb_dns_name" {
-  value       = aws_lb.hitl.dns_name
-  description = "Internal ALB DNS — point Route53 private zone at this."
+  value = aws_lb.hitl.dns_name
+  # m2: when acm_certificate_arn is empty the ALB has no HTTPS listener and the
+  # DNS name resolves to an unreachable load balancer. Callers must not point
+  # Route53 at this until the cert is wired.
+  description = "Internal ALB DNS — reachable only after acm_certificate_arn is set."
+}
+
+output "audit_log_group_name" {
+  value       = aws_cloudwatch_log_group.hitl_audit.name
+  description = "Audit CloudWatch log group — Cognito user → DDB UpdateItem / S3 presigned URL trail."
 }
 
 output "ecr_repo_url" {

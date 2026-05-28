@@ -49,3 +49,35 @@ variable "acm_certificate_arn" {
   default     = ""
   description = "Internal ACM certificate ARN. When empty, the ALB listener is HTTP-only (lab use)."
 }
+
+# Image tag for the Streamlit container. The ECR repository is IMMUTABLE (G8),
+# so the same tag can never be pushed twice. PR10 CI/CD injects the commit SHA
+# (or an explicit semver). The default is a placeholder that fails loudly if
+# the caller forgets — `latest` would silently collide on the second build
+# (M1 from AI Code Review).
+variable "image_tag" {
+  type        = string
+  default     = "REPLACE_ME"
+  description = "Immutable container image tag (e.g. commit SHA). Required at deploy time."
+}
+
+# ALB region for OIDC public key fetch (JWT signature verification).
+variable "alb_region" {
+  type        = string
+  default     = "ap-northeast-2"
+  description = "ALB region — used to resolve public-keys.auth.elb.{region}.amazonaws.com for JWT verification."
+}
+
+# CloudWatch retention. Finance domain typically requires 1–3 years. Split so
+# the (cheaper) app logs can rotate faster while audit logs stay longer.
+variable "log_retention_days" {
+  type        = number
+  default     = 90
+  description = "Retention for the application log group (Streamlit stdout)."
+}
+
+variable "audit_retention_days" {
+  type        = number
+  default     = 365
+  description = "Retention for the audit log group (HITL correction / compliance download events)."
+}

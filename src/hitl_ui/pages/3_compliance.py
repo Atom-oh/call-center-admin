@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import boto3
 import streamlit as st
+from hitl_lib.audit import emit_audit
 from hitl_lib.auth import current_user, require_group
 from hitl_lib.ddb_access import get_call
 
@@ -30,6 +31,14 @@ if call_id:
     s3 = boto3.client("s3")
     url = s3.generate_presigned_url(
         "get_object", Params={"Bucket": bucket, "Key": key}, ExpiresIn=300
+    )
+    # M3: emit audit record BEFORE returning the URL — even if the user
+    # never clicks, the intent-to-download is on record.
+    emit_audit(
+        "compliance.presigned_url",
+        user=current_user(),
+        call_id=call_id,
+        s3_uri=raw_ref,
     )
     st.write(f"감사 사용자: {current_user()}")
     st.link_button("원본 STT 다운로드 (5분 유효)", url)
