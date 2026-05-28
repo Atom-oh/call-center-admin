@@ -56,27 +56,38 @@ projects:
     apply_requirements:
       - mergeable
 
-  # Uncomment when infra/envs/stg exists.
-  # - name: stg
-  #   dir: infra/envs/stg
-  #   workspace: default
-  #   terraform_version: v1.9.6
-  #   autoplan:
-  #     enabled: false
-  #   apply_requirements:
-  #     - approved
-  #     - mergeable
+  # stg env — created by PR #15. Key prefix: call-center-admin/envs/stg.tfstate.
+  # autoplan enabled so any infra change is dry-run against stg too. apply
+  # gated on approved + mergeable (vs dev which only requires mergeable).
+  - name: stg
+    dir: infra/envs/stg
+    workspace: default
+    terraform_version: v1.9.6
+    autoplan:
+      enabled: true
+      when_modified:
+        - "*.tf"
+        - "../../modules/**/*.tf"
+        - "../../../atlantis.yaml"
+    apply_requirements:
+      - approved
+      - mergeable
 
-  # Uncomment when infra/envs/prd exists.
-  # - name: prd
-  #   dir: infra/envs/prd
-  #   workspace: default
-  #   terraform_version: v1.9.6
-  #   autoplan:
-  #     enabled: false
-  #   apply_requirements:
-  #     - approved
-  #     - mergeable
+  # prd env — created by PR #15. Key prefix: call-center-admin/envs/prd.tfstate.
+  # apply requires approval + mergeable (strictest gate).
+  - name: prd
+    dir: infra/envs/prd
+    workspace: default
+    terraform_version: v1.9.6
+    autoplan:
+      enabled: true
+      when_modified:
+        - "*.tf"
+        - "../../modules/**/*.tf"
+        - "../../../atlantis.yaml"
+    apply_requirements:
+      - approved
+      - mergeable
 
 # Custom workflows are NOT declared here. The server-side repos.yaml
 # (in Atom-oh/AWS-Demo-Platform: k8s/system/atlantis/configmap.yaml)
