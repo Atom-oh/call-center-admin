@@ -1,4 +1,68 @@
-# 자율 실행 결과 — Phase 1 PR1~PR6
+# Phase 1 자율 실행 결과 — 완료 (PR1~PR10 + 후속 PR14/15/16)
+
+**Phase 1 완료**: 2026-05-28
+**현재 HEAD**: `fcb9c62` (PR #16 머지) — origin/main, GitHub: `Atom-oh/call-center-admin`
+**테스트 현황**: 114 passed, 0 failed
+**Terraform 현황**: dev / stg / prd 모두 `fmt -recursive` clean + `validate` Success
+**ADR**: 12개 (모두 Mermaid 다이어그램 포함) — `docs/decisions/README.md`
+
+## Phase 1 머지 이력
+
+| PR | 제목 | 머지일 |
+|----|------|--------|
+| #5-9 | PR1~PR6 (taxonomy 파서 / storage / PII Guard / Classify / Verify / Persist+SFN) | 2026-05-22~26 |
+| #10 | docs: GSI 명 sync (한국어 attr → ASCII GSI) | 2026-05-27 |
+| #11 | docs: 10개 초기 ADR (Mermaid 의무 포함) | 2026-05-27 |
+| #13 | feat(observability): EMF + 5 알람 + dashboard + Slack relay (spec+TDD) | 2026-05-27 |
+| #14 | feat(hitl-ui): Streamlit + Fargate + Cognito + ALB (spec+TDD, AI 리뷰 3회차 PASSED) | 2026-05-28 |
+| #15 | feat(stg-prd-runbooks): stg/prd env + 4종 런북 + e2e smoke | 2026-05-28 |
+| #16 | chore(infra): atlantis stg/prd projects + hitl_ui wiring + drift guards + ADR-012 (5년 retention) | 2026-05-28 |
+
+## ADR 인벤토리 (12개)
+
+1. Pluggable InferenceAdapter Protocol
+2. Two-breakpoint prompt cache
+3. Three-layer PII guard
+4. xlsx 코드 식별자(NONEY/PAYNENT) 보존
+5. per-Lambda staging-dir packaging
+6. KMS 데이터 클래스 분리 (4 CMK)
+7. SFN Express 8-state orchestration
+8. 한국어 DDB 속성명 + ASCII GSI index
+9. Atlantis 로 Terraform 처리
+10. global Bedrock CRIS
+11. HITL UI = Streamlit on Fargate (ALB authenticate-cognito)
+12. HITL 감사 로그 5년 보존 (전자금융거래법 §22)
+
+## 운영팀 진행 사항
+
+| 항목 | 상태 |
+|------|------|
+| Atlantis apply (dev / stg / prd) | 사용자 수동 진행 중 |
+| ACM 인증서 발급 (사내 PKI) | 운영팀 진행 |
+| Slack webhook secret 등록 (Secrets Manager) | 운영팀 진행 |
+| Cognito user 생성 + 그룹 매핑 (3 그룹: ops/analyst/compliance) | 운영팀 진행 |
+| Docker image build + ECR push (HITL UI) | 운영팀 진행 |
+| 골든셋 손 라벨링 50~100건 (분석팀) | 분석팀 진행 |
+
+## Phase 2 진입 조건 (PII service)
+
+- 운영 1개월 후 PII 누설률 > 1% (CloudWatch metric `pii.maskApplied` baseline 대비) — 정규식 한계 도달 시 SageMaker Async + Qwen2.5-7B-Instruct PII service 도입
+- 본 시점은 ADR-003 의 3-layer guard 로 충분 (test 가드 보호)
+
+## Phase 3 진입 조건 (MLOps)
+
+- HITL real label 500~1000 건 누적 (PR8 HITL UI 의 corrected 행 baseline)
+- 진입 시 KLUE-BERT fine-tune → SageMaker Endpoint → ADR-001 의 `InferenceAdapter` Protocol 에 끼워 넣어 classify Lambda 의 cascade 추가 (Bedrock 폴백 유지)
+- plan: `docs/superpowers/plans/2026-05-22-phase3-mlops-continuous-learning.md`
+
+## 후속 (post-Phase-1) follow-up minor
+
+- PR #14: audit module thread race (예외 흡수로 안전), masked_ref parsing IndexError 가드, presigned URL ExpiresIn var화
+- PR #16: ACM 빈 default 시 ALB 무방비 stand-up — module validation 추가, prd apply_requirements 서버사이드 강화 ADR
+
+---
+
+# (이하 PR1~PR6 자율 실행 시점의 원본 STATUS — historical 보관)
 
 **기간**: 2026-05-22 → 2026-05-26 (사용자 수면 중 자율 진행)
 **범위**: subagent-driven-development 스킬로 Phase 1 plan의 PR1~PR6 실행
