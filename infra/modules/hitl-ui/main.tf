@@ -93,7 +93,7 @@ resource "aws_cognito_user_group" "compliance" {
 
 resource "aws_security_group" "alb" {
   name        = "callcenter-${var.env}-hitl-alb"
-  description = "Internal ALB ingress for HITL UI — 사내 CIDR only"
+  description = "Internal ALB ingress for HITL UI (intranet CIDR only)"
   vpc_id      = var.vpc_id
 
   ingress {
@@ -115,7 +115,7 @@ resource "aws_security_group" "alb" {
 
 resource "aws_security_group" "ecs" {
   name        = "callcenter-${var.env}-hitl-ecs"
-  description = "ECS task security group — ingress only from ALB SG"
+  description = "ECS task security group (ingress only from ALB SG)"
   vpc_id      = var.vpc_id
 
   ingress {
