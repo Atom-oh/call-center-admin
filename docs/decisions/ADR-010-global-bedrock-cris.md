@@ -22,9 +22,9 @@ Phase 1 PR1~PR5 초기 코드는 `apac.` CRIS 사용 → 운영 1주 후 throttl
 ## Decision
 
 Bedrock 호출 시 **global CRIS** 사용:
-- `global.anthropic.claude-opus-4-7` (Classify Lambda)
+- `global.anthropic.claude-opus-4-7` (Classify Lambda) — production. Opus 4.8 로의 bump 는 별도 ADR + 골든셋 회귀 평가 후 진행.
 - `global.anthropic.claude-sonnet-4-6` (Verify Lambda)
-- `global.anthropic.claude-opus-4-7` (`.github/workflows/pr-review.yml` AI Code Review)
+- `global.anthropic.claude-opus-4-8` (`.github/workflows/pr-review.yml` AI Code Review — PR #22 에서 4.7 → 4.8 bump. PR Review 는 production 트래픽이 아니라 doc 검토용이라 골든셋 회귀 검증 불필요.)
 
 IAM 권한:
 - Lambda execution role 에 `bedrock:InvokeModel` 의 `Resource` 에 inference-profile ARN 명시:
@@ -108,7 +108,7 @@ flowchart TD
 
 - `src/lib/bedrock_client.py` — 환경변수 `BEDROCK_MODEL_ID_OPUS` / `BEDROCK_MODEL_ID_SONNET` 로 model ID 주입. default `global.anthropic.claude-opus-4-7` / `global.anthropic.claude-sonnet-4-6`.
 - `infra/modules/classify-pipeline/iam.tf` — Lambda role 의 bedrock:InvokeModel 권한에 inference-profile ARN 패턴 추가
-- `.github/workflows/pr-review.yml` — `ANTHROPIC_MODEL` env 가 `global.anthropic.claude-opus-4-7`
+- `.github/workflows/pr-review.yml` — `ANTHROPIC_MODEL` env 가 `global.anthropic.claude-opus-4-8` (PR #22 머지). production classify/verify Lambda 의 model ID 와 의도적으로 분기 — PR Review 는 자체 트래픽이라 별도 evaluation gate 없이 신규 모델 적용 가능.
 - `tests/structure/test-github-actions.sh` 가 `global.anthropic.claude-opus-4-7` 문자열 grep 검증
 - 회귀 인시던트 기록: PR #10 시점에 Atlantis IRSA 가 `inference-profile/global.anthropic.claude-opus-4-*` ARN 권한 누락으로 AI Code Review 일시 실패 — IAM 권한 추가 후 정상화. ADR-009 도 동일 인시던트 참조.
 
