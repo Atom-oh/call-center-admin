@@ -43,18 +43,17 @@ variable "kms_raw_arn" {
   description = "KMS CMK for S3 stt-raw — required for compliance presigned URL decrypt."
 }
 
-# Reserved for PR10 (CI/CD) — ACM cert ARN passed in once cert is issued.
-variable "acm_certificate_arn" {
+# ADR-013: CloudFront + VPC Origin. ACM cert lives in us-east-1 (CloudFront
+# requirement). ALB itself runs HTTP-only — TLS is terminated at CloudFront.
+# Default empty so the CF distribution is gated off until the cert is issued.
+variable "acm_certificate_arn_us_east_1" {
   type        = string
   default     = ""
-  description = "Internal ACM certificate ARN. When empty, the ALB listener is HTTP-only (lab use)."
+  description = "Public ACM ARN in us-east-1 for the CloudFront distribution. Empty → CF disabled."
 }
 
 # Image tag for the Streamlit container. The ECR repository is IMMUTABLE (G8),
-# so the same tag can never be pushed twice. PR10 CI/CD injects the commit SHA
-# (or an explicit semver). The default is a placeholder that fails loudly if
-# the caller forgets — `latest` would silently collide on the second build
-# (M1 from AI Code Review).
+# so the same tag can never be pushed twice. PR10 CI/CD injects the commit SHA.
 variable "image_tag" {
   type        = string
   default     = "REPLACE_ME"
@@ -68,7 +67,7 @@ variable "alb_region" {
   description = "ALB region — used to resolve public-keys.auth.elb.{region}.amazonaws.com for JWT verification."
 }
 
-# CloudWatch retention. Finance domain typically requires 1–3 years. Split so
+# CloudWatch retention. Finance domain typically requires 1-3 years. Split so
 # the (cheaper) app logs can rotate faster while audit logs stay longer.
 variable "log_retention_days" {
   type        = number
@@ -82,13 +81,17 @@ variable "audit_retention_days" {
   description = "Retention for the audit log group (HITL correction / compliance download events)."
 }
 
-# M2 from 2nd AI review: the Cognito user pool client's callback URL must match
-# the actual ALB DNS / internal domain. Hardcoding `hitl.callcenter-{env}.kakaopay.internal`
-# fails when (a) the internal domain isn't issued yet, or (b) the dev/stg cluster
-# uses a different DNS. Default is a placeholder to force explicit decision at
-# deploy time.
+# ADR-013: callback domain is the CloudFront alias (public domain).
+# Default kept as placeholder so deploy time injects the actual FQDN.
 variable "callback_domain" {
   type        = string
   default     = "REPLACE_ME"
-  description = "FQDN behind which the ALB is reachable (e.g. hitl.callcenter-dev.kakaopay.internal). Used to build the Cognito callback URL."
+  description = "Public FQDN behind CloudFront (e.g. hitl.callcenter-dev.kakaopay.com). Used to build the Cognito callback URL and the CloudFront viewer alias."
+}
+
+# CloudFront WAF — toggle. When false, CF is created without a WAF web ACL.
+variable "enable_waf" {
+  type        = bool
+  default     = true
+  description = "Attach an AWS-managed WAF v2 web ACL to the CloudFront distribution."
 }

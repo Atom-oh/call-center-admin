@@ -32,6 +32,30 @@ provider "aws" {
   }
 }
 
+
+# ADR-013: us-east-1 provider for CloudFront ACM + WAF v2 (CLOUDFRONT scope).
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+
+  dynamic "assume_role" {
+    for_each = var.terraformer_role_arn != "" ? [1] : []
+    content {
+      role_arn     = var.terraformer_role_arn
+      external_id  = data.aws_secretsmanager_secret_version.terraformer_external_id.secret_string
+      session_name = "atlantis-callcenter-${var.env}-use1"
+    }
+  }
+
+  default_tags {
+    tags = {
+      project    = "callcenter-classification"
+      env        = var.env
+      managed-by = "terraform"
+    }
+  }
+}
+
 module "shared" {
   source = "../../modules/shared"
   env    = var.env
@@ -90,6 +114,11 @@ module "observability" {
 
 module "hitl_ui" {
   source = "../../modules/hitl-ui"
+
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
 
   env                = var.env
   vpc_id             = module.shared.vpc_id
