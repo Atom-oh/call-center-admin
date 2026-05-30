@@ -44,6 +44,30 @@ provider "aws" {
   }
 }
 
+# ADR-013: us-east-1 provider for CloudFront ACM + WAF v2 (CLOUDFRONT scope).
+# Uses the same Atlantis AssumeRole chain as the primary region provider.
+provider "aws" {
+  alias  = "us_east_1"
+  region = "us-east-1"
+
+  dynamic "assume_role" {
+    for_each = var.terraformer_role_arn != "" ? [1] : []
+    content {
+      role_arn     = var.terraformer_role_arn
+      external_id  = data.aws_secretsmanager_secret_version.terraformer_external_id.secret_string
+      session_name = "atlantis-callcenter-${var.env}-use1"
+    }
+  }
+
+  default_tags {
+    tags = {
+      project    = "callcenter-classification"
+      env        = var.env
+      managed-by = "terraform"
+    }
+  }
+}
+
 module "shared" {
   source = "../../modules/shared"
   env    = var.env
@@ -105,11 +129,16 @@ module "observability" {
   lambda_pii_name      = module.classify_pipeline.pii_guard_name
 }
 
-# PR8 — HITL UI. acm_certificate_arn 은 사내 PKI 발급 후 var 로 주입.
-# 미발급 상태에서도 ECR / Cognito / ECS / ALB 까지는 apply 진행 가능
-# (HTTPS listener 만 count=0 으로 비활성화).
+# ADR-013: HITL UI = CloudFront + VPC Origin → Private ALB.
+# - acm_certificate_arn_us_east_1 / callback_domain 은 인증서 발급 후 주입.
+# - 미주입 시점에는 ALB / ECS / Cognito 까지만 stand-up 되고 CloudFront 는 count=0.
 module "hitl_ui" {
   source = "../../modules/hitl-ui"
+
+  providers = {
+    aws           = aws
+    aws.us_east_1 = aws.us_east_1
+  }
 
   env                = var.env
   vpc_id             = module.shared.vpc_id
@@ -120,5 +149,4 @@ module "hitl_ui" {
   kms_ddb_arn        = module.storage.kms_ddb_arn
   kms_masked_arn     = module.storage.kms_masked_arn
   kms_raw_arn        = module.storage.kms_raw_arn
-  # acm_certificate_arn = ""  # default — HTTPS listener disabled until cert issued
 }

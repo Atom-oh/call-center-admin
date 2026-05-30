@@ -1,9 +1,6 @@
 output "alb_dns_name" {
-  value = aws_lb.hitl.dns_name
-  # m2: when acm_certificate_arn is empty the ALB has no HTTPS listener and the
-  # DNS name resolves to an unreachable load balancer. Callers must not point
-  # Route53 at this until the cert is wired.
-  description = "Internal ALB DNS — reachable only after acm_certificate_arn is set."
+  value       = aws_lb.hitl.dns_name
+  description = "Internal ALB DNS — CloudFront VPC Origin target (ADR-013). Not user-facing."
 }
 
 output "audit_log_group_name" {
@@ -27,7 +24,17 @@ output "ecs_cluster_name" {
 }
 
 output "ecs_service_name" {
-  # ECS service is count-gated on acm_certificate_arn; stays empty until cert is wired.
-  value       = length(aws_ecs_service.hitl) > 0 ? aws_ecs_service.hitl[0].name : ""
-  description = "ECS service name — empty until acm_certificate_arn is set."
+  value       = aws_ecs_service.hitl.name
+  description = "ECS service name — used for `aws ecs update-service --force-new-deployment`."
+}
+
+# ADR-013: CloudFront distribution + domain (user-facing endpoint).
+output "cloudfront_distribution_id" {
+  value       = length(aws_cloudfront_distribution.hitl) > 0 ? aws_cloudfront_distribution.hitl[0].id : ""
+  description = "CloudFront distribution ID — empty until acm_certificate_arn_us_east_1 is set."
+}
+
+output "cloudfront_domain_name" {
+  value       = length(aws_cloudfront_distribution.hitl) > 0 ? aws_cloudfront_distribution.hitl[0].domain_name : ""
+  description = "CloudFront managed domain (xyz.cloudfront.net). Point Route53 alias at this if callback_domain differs."
 }
