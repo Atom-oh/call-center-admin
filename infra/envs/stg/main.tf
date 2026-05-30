@@ -103,7 +103,7 @@ module "hitl_ui" {
 
   # ADR-012: stg 도 prd 와 동일한 5년 보존 — 운영 정책 일관성. dev 는
   # 비용 절감을 위해 module default (365d) 유지.
-  audit_retention_days = 1825
+  audit_retention_days = 1827
 
   # acm_certificate_arn / callback_domain / image_tag — 운영팀이 deploy 시점에 주입.
 }

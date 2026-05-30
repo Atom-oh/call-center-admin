@@ -26,8 +26,8 @@ PR #14 (HITL UI) 가 도입한 `/hitl-ui/audit/...` CloudWatch log group 은 다
 | env | audit_retention_days | 근거 |
 |---|---|---|
 | dev | 365 (module default) | 비용 절감, 컴플라이언스 대상 X |
-| stg | 1825 (5년) | prd 와 운영 정책 일관 — stg 에서 reproduce 한 인시던트가 prd 와 동일 retention 으로 회수 가능 |
-| prd | 1825 (5년) | 전자금융거래법 §22 |
+| stg | 1827 (5년) | prd 와 운영 정책 일관 — stg 에서 reproduce 한 인시던트가 prd 와 동일 retention 으로 회수 가능 |
+| prd | 1827 (5년) | 전자금융거래법 §22 |
 
 application log group (`/ecs/callcenter-{env}-hitl`) 은 별도 변수 `log_retention_days` (default 90d) 로 분리되어 영향 없음 — 비용 trade-off 의 핵심 부분.
 
@@ -37,7 +37,7 @@ application log group (`/ecs/callcenter-{env}-hitl`) 은 별도 변수 `log_rete
 flowchart LR
     User[운영자 / 컴플라이언스] --> UI[Streamlit HITL UI]
     UI --> Audit[hitl_lib.audit.emit_audit]
-    Audit --> LG[/hitl-ui/audit/callcenter-prd<br/>CloudWatch Log Group<br/>retention=1825d]
+    Audit --> LG[/hitl-ui/audit/callcenter-prd<br/>CloudWatch Log Group<br/>retention=1827d]
     LG -.5년 보존.-> Compliance[전자금융거래법 §22<br/>감사 / 검사 대응]
 
     UI --> AppLog[Streamlit stdout]
@@ -60,11 +60,11 @@ flowchart TD
     DEV1 --> DEV2[컴플라이언스 대상 X<br/>비용 최소]
 
     Q --> STG[stg]
-    STG --> STG1[audit_retention_days = 1825<br/>app log = 90d]
+    STG --> STG1[audit_retention_days = 1827<br/>app log = 90d]
     STG1 --> STG2[prd 와 동일 정책<br/>인시던트 재현 시<br/>동일 retention 확보]
 
     Q --> PRD[prd]
-    PRD --> PRD1[audit_retention_days = 1825<br/>app log = 90d]
+    PRD --> PRD1[audit_retention_days = 1827<br/>app log = 90d]
     PRD1 --> PRD2[전자금융거래법 §22<br/>5년 보존 의무]
 ```
 
@@ -74,7 +74,7 @@ flowchart TD
 - 전자금융거래법 §22 의 5년 보존 의무 명시적 충족
 - stg / prd 정책 일관 — stg 에서 재현된 인시던트의 audit trail 이 prd 인시던트와 동일 retention 으로 회수 가능
 - dev 는 비용 효율 유지 (분류 결과 자체는 DDB TTL 1y 로 별도 정책)
-- app log retention (90d) 과 audit log retention (1825d) 가 분리되어 비용 최소 + 의무 충족 양립
+- app log retention (90d) 과 audit log retention (1827d) 가 분리되어 비용 최소 + 의무 충족 양립
 
 ### Negative
 - CloudWatch Logs 비용 ↑: audit log 가 5년치 누적. 추정 일 record 수 = 운영팀 5명 × 100건/day = 500 events × ~200B/event ≈ 30MB/년 × 5년 = 150MB. 비용 영향 미미 (월 $0.01 미만).
@@ -86,7 +86,7 @@ flowchart TD
 
 ## Alternatives Considered
 
-### Option A: module default 를 1825 로 변경
+### Option A: module default 를 1827 로 변경
 모든 env (dev 포함) 가 5년 retention → dev 비용 ↑. 컴플라이언스 대상 아닌 dev 에 불필요한 비용 부담. 거부.
 
 ### Option B: dev 에도 5년 적용
@@ -100,7 +100,7 @@ CloudWatch Logs → S3 Export 가 별도 운영. Phase 2 에서 retention 비용
 
 ## Implementation Notes
 
-- `infra/envs/stg/main.tf` + `infra/envs/prd/main.tf` 의 `module "hitl_ui"` 블록에 `audit_retention_days = 1825` 명시.
+- `infra/envs/stg/main.tf` + `infra/envs/prd/main.tf` 의 `module "hitl_ui"` 블록에 `audit_retention_days = 1827` 명시.
 - `infra/envs/dev/main.tf` 는 명시 안 함 (module default 365d 유지).
 - `infra/modules/hitl-ui/variables.tf` 의 default 는 그대로 365 유지 — 보수적 default 보다 명시적 override 가 더 추적 가능.
 - 회귀 가드: stg/prd 에 audit_retention_days override 가 사라지면 `terraform plan` 에서 변경 감지되어 PR 리뷰에서 catch. 향후 자동 가드 test 검토 (현재는 plan 의존).
