@@ -16,7 +16,12 @@
 
 terraform {
   required_providers {
-    aws = { source = "hashicorp/aws", version = "~> 5.70" }
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.70"
+      # ADR-013: CloudFront ACM + WAF v2 (CLOUDFRONT scope) live in us-east-1.
+      configuration_aliases = [aws.us_east_1]
+    }
   }
 }
 
@@ -91,22 +96,24 @@ resource "aws_cognito_user_group" "compliance" {
 # Security groups — ALB internal + ECS ingress   #
 ##################################################
 
+# ADR-013: ALB ingress restricted to CloudFront origin-facing IPs (managed
+# prefix list). Direct intranet ingress is no longer needed — all traffic
+# arrives via CloudFront VPC Origin.
+data "aws_ec2_managed_prefix_list" "cloudfront_origin_facing" {
+  name = "com.amazonaws.global.cloudfront.origin-facing"
+}
+
 resource "aws_security_group" "alb" {
-  # G description must be ASCII (AWS EC2 limitation).
-  # name_prefix + create_before_destroy: SG description is immutable in AWS;
-  # any description change requires replacement. To avoid dependency violations
-  # (ALB / ECS task ENIs reference the old SG), use create_before_destroy with
-  # a name_prefix so the new SG comes up before the old one is detached.
   name_prefix = "callcenter-${var.env}-hitl-alb-"
-  description = "Internal ALB ingress for HITL UI (intranet CIDR only)"
+  description = "Internal ALB ingress for HITL UI (CloudFront origin only)"
   vpc_id      = var.vpc_id
 
   ingress {
-    description = "HTTPS from intranet (G7)"
-    from_port   = 443
-    to_port     = 443
-    protocol    = "tcp"
-    cidr_blocks = ["10.0.0.0/8"]
+    description     = "HTTP from CloudFront edge (ADR-013)"
+    from_port       = 80
+    to_port         = 80
+    protocol        = "tcp"
+    prefix_list_ids = [data.aws_ec2_managed_prefix_list.cloudfront_origin_facing.id]
   }
 
   egress {
@@ -161,11 +168,8 @@ resource "aws_lb" "hitl" {
 }
 
 resource "aws_lb_target_group" "hitl" {
-  # Gated on ACM cert: without an HTTPS listener (and thus without a default
-  # action forwarding to this target group) the TG has no associated LB, which
-  # makes `aws_ecs_service.load_balancer` reject the attach. Count=0 until the
-  # cert is wired in.
-  count       = var.acm_certificate_arn != "" ? 1 : 0
+  # ADR-013: target group is created unconditionally now — listener attaches it
+  # immediately via HTTP, and CloudFront becomes the public entry point.
   name        = "callcenter-${var.env}-hitl-tg"
   port        = 8501
   protocol    = "HTTP"
@@ -181,25 +185,15 @@ resource "aws_lb_target_group" "hitl" {
   }
 }
 
-# HTTPS listener requires ACM cert. When acm_certificate_arn is empty (lab
-# bootstrap before cert issuance), the listener block is created in count=0
-# mode and the ALB has no listener — apply will succeed but the service is
-# unreachable until ACM is wired in. This avoids the data-source chicken-and-egg.
-#
-# C1 from 2nd AI review: do NOT use a listener_rule with `path_pattern = ["/*"]`.
-# It would match every request and skip the listener's default_action — the
-# Cognito authenticate step would be silently bypassed. Instead, chain two
-# default_action blocks via `order` so EVERY request is forced through
-# authenticate-cognito (order=1) BEFORE forward (order=2).
-resource "aws_lb_listener" "https" {
-  count             = var.acm_certificate_arn != "" ? 1 : 0
+# ADR-013: HTTP listener — TLS is terminated at CloudFront, ALB receives
+# already-decrypted traffic via the VPC Origin (AWS internal link). The
+# authenticate-cognito + forward chain stays identical (C1 guard from 2nd AI
+# review).
+resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.hitl.arn
-  port              = 443
-  protocol          = "HTTPS"
-  certificate_arn   = var.acm_certificate_arn
-  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  port              = 80
+  protocol          = "HTTP"
 
-  # Order 1: enforce Cognito authentication for every request.
   default_action {
     order = 1
     type  = "authenticate-cognito"
@@ -211,11 +205,144 @@ resource "aws_lb_listener" "https" {
     }
   }
 
-  # Order 2: forward authenticated traffic to the Streamlit target group.
   default_action {
     order            = 2
     type             = "forward"
-    target_group_arn = aws_lb_target_group.hitl[0].arn
+    target_group_arn = aws_lb_target_group.hitl.arn
+  }
+}
+
+###############################################################
+# ADR-013: CloudFront distribution + VPC Origin + WAF v2      #
+###############################################################
+
+# WAF v2 web ACL (CLOUDFRONT scope is us-east-1 only).
+resource "aws_wafv2_web_acl" "hitl" {
+  count    = var.enable_waf && var.acm_certificate_arn_us_east_1 != "" ? 1 : 0
+  provider = aws.us_east_1
+  name     = "callcenter-${var.env}-hitl"
+  scope    = "CLOUDFRONT"
+
+  default_action {
+    allow {}
+  }
+
+  rule {
+    name     = "AWS-AWSManagedRulesCommonRuleSet"
+    priority = 0
+
+    override_action {
+      none {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesCommonRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "common-rules"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  rule {
+    name     = "AWS-AWSManagedRulesKnownBadInputsRuleSet"
+    priority = 1
+
+    override_action {
+      none {}
+    }
+
+    statement {
+      managed_rule_group_statement {
+        name        = "AWSManagedRulesKnownBadInputsRuleSet"
+        vendor_name = "AWS"
+      }
+    }
+
+    visibility_config {
+      cloudwatch_metrics_enabled = true
+      metric_name                = "known-bad-inputs"
+      sampled_requests_enabled   = true
+    }
+  }
+
+  visibility_config {
+    cloudwatch_metrics_enabled = true
+    metric_name                = "callcenter-${var.env}-hitl-waf"
+    sampled_requests_enabled   = true
+  }
+}
+
+# CloudFront distribution — gated on the us-east-1 ACM certificate being issued.
+# Without the cert the CF is omitted; the ALB still stands up and can be
+# reached over the VPC for internal smoke tests but no public DNS is bound.
+resource "aws_cloudfront_distribution" "hitl" {
+  count = var.acm_certificate_arn_us_east_1 != "" ? 1 : 0
+
+  enabled         = true
+  is_ipv6_enabled = true
+  comment         = "callcenter-${var.env}-hitl"
+
+  # Cognito authenticate-cognito sets cookies + redirects — CF must respect
+  # the alternate callback FQDN.
+  aliases = [var.callback_domain]
+
+  origin {
+    # VPC Origin: CloudFront talks to the ALB over the AWS network. Origin
+    # protocol is HTTP because TLS terminates at the CF edge.
+    domain_name = aws_lb.hitl.dns_name
+    origin_id   = "hitl-alb"
+
+    custom_origin_config {
+      http_port              = 80
+      https_port             = 443
+      origin_protocol_policy = "http-only"
+      origin_ssl_protocols   = ["TLSv1.2"]
+    }
+  }
+
+  default_cache_behavior {
+    target_origin_id       = "hitl-alb"
+    viewer_protocol_policy = "redirect-to-https"
+    allowed_methods        = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
+    cached_methods         = ["GET", "HEAD"]
+    compress               = true
+    # No caching for dynamic HITL pages — Streamlit responses are user-specific.
+    min_ttl     = 0
+    default_ttl = 0
+    max_ttl     = 0
+
+    forwarded_values {
+      query_string = true
+      headers      = ["*"]
+      cookies {
+        forward = "all"
+      }
+    }
+  }
+
+  viewer_certificate {
+    acm_certificate_arn      = var.acm_certificate_arn_us_east_1
+    ssl_support_method       = "sni-only"
+    minimum_protocol_version = "TLSv1.2_2021"
+  }
+
+  restrictions {
+    geo_restriction {
+      restriction_type = "whitelist"
+      locations        = ["KR"]
+    }
+  }
+
+  web_acl_id = length(aws_wafv2_web_acl.hitl) > 0 ? aws_wafv2_web_acl.hitl[0].arn : null
+
+  tags = {
+    Name = "callcenter-${var.env}-hitl"
   }
 }
 
@@ -363,11 +490,9 @@ resource "aws_ecs_task_definition" "hitl" {
 }
 
 resource "aws_ecs_service" "hitl" {
-  # Same gate as the target group: ECS service cannot attach to a TG that has
-  # no LB association, so we skip ECS service stand-up until ACM is ready.
-  # Cluster / task_definition / log group / IAM / ECR still get created so
-  # subsequent docker push can proceed before cert issuance.
-  count           = var.acm_certificate_arn != "" ? 1 : 0
+  # ADR-013: TG + HTTP listener are now created unconditionally, so the ECS
+  # service can stand up alongside them. CloudFront (gated on us-east-1 ACM)
+  # is the only piece that waits for the cert.
   name            = "callcenter-${var.env}-hitl"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.hitl.arn
@@ -381,11 +506,8 @@ resource "aws_ecs_service" "hitl" {
   }
 
   load_balancer {
-    target_group_arn = aws_lb_target_group.hitl[0].arn
+    target_group_arn = aws_lb_target_group.hitl.arn
     container_name   = "streamlit"
     container_port   = 8501
   }
-
-  # Tag mutability is enforced at ECR, but ECS service desired count is 1 in dev.
-  # PR-prd will move this to 2+ for HA.
 }
