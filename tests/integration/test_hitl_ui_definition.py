@@ -101,39 +101,51 @@ def test_cognito_user_groups_define_three_roles(main_tf: str) -> None:
 
 
 def test_alb_is_internal_not_public(main_tf: str) -> None:
-    """G7: ALB must be internal, ingress restricted to private CIDR."""
+    """G7 + M1 from 1st AI review: ALB internal. With real VPC Origin (C1 fix),
+    ingress source becomes the VPC CIDR — VPC Origin is an AWS-internal link
+    that arrives at the ALB from within the VPC. The CloudFront managed prefix
+    list `cloudfront.origin-facing` is for internet-routed CF, NOT VPC Origin.
+    """
+    import re
+
     assert 'resource "aws_lb" "hitl"' in main_tf
     lb_block = main_tf.split('aws_lb" "hitl"')[1].split('resource "aws_')[0]
-    assert "internal           = true" in lb_block or "internal = true" in lb_block
-    # SG ingress should be 10.0.0.0/8, not 0.0.0.0/0.
+    assert re.search(r"internal\s*=\s*true\b", lb_block), "ALB must be internal"
     sg_alb_block = main_tf.split('aws_security_group" "alb"')[1].split('resource "aws_')[0]
-    assert '"10.0.0.0/8"' in sg_alb_block
-    assert '"0.0.0.0/0"' not in sg_alb_block.split("ingress")[1].split("egress")[0]
+    assert '"0.0.0.0/0"' not in sg_alb_block.split("ingress")[1].split("egress")[0], (
+        "ALB SG must not have 0.0.0.0/0 ingress"
+    )
+    # M1 fix: ingress source is VPC CIDR (data.aws_vpc.this.cidr_block), not the
+    # internet-routed CloudFront prefix list.
+    assert "data.aws_vpc.this.cidr_block" in main_tf, (
+        "ALB SG ingress must use VPC CIDR for VPC Origin traffic (ADR-013 M1 fix)"
+    )
+    assert "com.amazonaws.global.cloudfront.origin-facing" not in main_tf, (
+        "ALB SG must NOT use the internet-routed CF prefix list — that contradicts VPC Origin"
+    )
 
 
-def test_alb_listener_uses_tls13(main_tf: str) -> None:
-    """G10: HTTPS listener must use the TLS-1.3 SSL policy."""
-    assert 'resource "aws_lb_listener" "https"' in main_tf
-    listener_block = main_tf.split('aws_lb_listener" "https"')[1].split('resource "aws_')[0]
-    assert (
-        "ElbSecurityPolicy-TLS13" in listener_block or "ELBSecurityPolicy-TLS13" in listener_block
+def test_alb_listener_is_http_only_with_tls_at_cloudfront(main_tf: str) -> None:
+    """ADR-013 supersedes G10: TLS terminates at CloudFront, ALB receives HTTP
+    from the VPC Origin. There must be an HTTP listener and no HTTPS listener
+    holding an ACM cert directly."""
+    assert 'resource "aws_lb_listener" "http"' in main_tf
+    assert 'resource "aws_lb_listener" "https"' not in main_tf, (
+        "ALB must not terminate TLS — that is CloudFront's job (ADR-013)"
     )
 
 
 def test_alb_listener_enforces_authenticate_cognito_before_forward(main_tf: str) -> None:
-    """C1 guard (2nd AI review): the HTTPS listener must run authenticate-cognito
-    BEFORE forward. A naive `path_pattern = "/*"` listener_rule would silently
-    bypass default_action — this test catches that anti-pattern.
+    """C1 guard (2nd AI review): the HTTP listener must run authenticate-cognito
+    BEFORE forward. The default_action chain remains identical post-ADR-013.
     """
-    listener_block = main_tf.split('aws_lb_listener" "https"')[1].split('resource "aws_')[0]
-    # Both actions must be present in the default_action chain.
+    listener_block = main_tf.split('aws_lb_listener" "http"')[1].split('resource "aws_')[0]
     assert "authenticate-cognito" in listener_block, (
         "default_action must include authenticate-cognito"
     )
     assert (
         'type             = "forward"' in listener_block or 'type = "forward"' in listener_block
     ), "default_action must include forward"
-    # And the order must be authenticate-cognito (1) → forward (2).
     auth_idx = listener_block.find("authenticate-cognito")
     fwd_idx = listener_block.find('type             = "forward"')
     if fwd_idx == -1:
@@ -277,3 +289,101 @@ def test_dockerfile_streamlit_headless_mode(dockerfile: str) -> None:
     assert "--server.headless=true" in dockerfile
     assert "--server.port=8501" in dockerfile
     assert "--server.address=0.0.0.0" in dockerfile
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# ADR-013 — CloudFront + VPC Origin + WAF
+# ──────────────────────────────────────────────────────────────────────────
+
+
+def test_cloudfront_distribution_defined(main_tf: str) -> None:
+    """ADR-013: CloudFront distribution fronts the internal ALB via VPC Origin."""
+    assert 'resource "aws_cloudfront_distribution" "hitl"' in main_tf
+
+
+def test_cloudfront_uses_vpc_origin_resource(main_tf: str) -> None:
+    """C1 from 1st AI review: CloudFront must reach the internal ALB via a real
+    VPC Origin (aws_cloudfront_vpc_origin resource + vpc_origin_config block).
+    custom_origin_config alone is internet-routed and CANNOT reach internal=true ALBs.
+    """
+    assert 'resource "aws_cloudfront_vpc_origin" "hitl"' in main_tf, (
+        "Must declare aws_cloudfront_vpc_origin resource (ADR-013 C1 fix)"
+    )
+    cf_block = main_tf.split('aws_cloudfront_distribution" "hitl"')[1].split('resource "aws_')[0]
+    assert "vpc_origin_config" in cf_block, (
+        "CF origin block must use vpc_origin_config (not custom_origin_config)"
+    )
+    assert "aws_cloudfront_vpc_origin.hitl[0].id" in cf_block, (
+        "vpc_origin_config must reference the aws_cloudfront_vpc_origin resource"
+    )
+
+
+def test_cloudfront_vpc_origin_points_to_alb_with_http_only(main_tf: str) -> None:
+    """ADR-013: VPC Origin endpoint targets the ALB ARN with HTTP-only protocol
+    (TLS terminates at CF edge)."""
+    vpc_origin_block = main_tf.split('aws_cloudfront_vpc_origin" "hitl"')[1].split(
+        'resource "aws_'
+    )[0]
+    assert "aws_lb.hitl.arn" in vpc_origin_block, "VPC Origin must target the ALB ARN"
+    assert 'origin_protocol_policy = "http-only"' in vpc_origin_block, (
+        "CF → ALB must be HTTP-only (TLS at CF edge per ADR-013)"
+    )
+
+
+def test_cloudfront_viewer_uses_acm_us_east_1_and_tls12_min(main_tf: str) -> None:
+    """ADR-013: viewer-side ACM must be the us-east-1 public cert; min TLS 1.2."""
+    cf_block = main_tf.split('aws_cloudfront_distribution" "hitl"')[1].split('resource "aws_')[0]
+    assert "var.acm_certificate_arn_us_east_1" in cf_block
+    assert 'minimum_protocol_version = "TLSv1.2_2021"' in cf_block
+
+
+def test_waf_v2_attached_to_cloudfront_scope(main_tf: str) -> None:
+    """ADR-013: WAF v2 web ACL is CLOUDFRONT-scoped, attached via web_acl_id."""
+    assert 'resource "aws_wafv2_web_acl" "hitl"' in main_tf
+    waf_block = main_tf.split('aws_wafv2_web_acl" "hitl"')[1].split('resource "aws_')[0]
+    assert 'scope    = "CLOUDFRONT"' in waf_block or 'scope = "CLOUDFRONT"' in waf_block
+    assert "provider = aws.us_east_1" in waf_block, (
+        "WAF v2 CLOUDFRONT scope must live in us-east-1 provider alias"
+    )
+    cf_block = main_tf.split('aws_cloudfront_distribution" "hitl"')[1].split('resource "aws_')[0]
+    assert "web_acl_id" in cf_block, "CloudFront must wire the WAF web_acl_id"
+
+
+def test_cloudfront_alias_uses_callback_domain(main_tf: str) -> None:
+    """ADR-013: CloudFront `aliases` matches the public callback_domain."""
+    cf_block = main_tf.split('aws_cloudfront_distribution" "hitl"')[1].split('resource "aws_')[0]
+    assert "var.callback_domain" in cf_block
+
+
+def test_provider_us_east_1_alias_required(main_tf: str) -> None:
+    """ADR-013: module declares the us-east-1 provider configuration alias."""
+    assert "configuration_aliases" in main_tf
+    assert "aws.us_east_1" in main_tf
+
+
+def test_cloudfront_uses_managed_cache_and_origin_request_policies(main_tf: str) -> None:
+    """M2 from 1st AI review: legacy forwarded_values { headers=["*"] } 는 invalid.
+    Managed-CachingDisabled (4135ea2d-...) + Managed-AllViewer (216adef6-...) 사용.
+    """
+    cf_block = main_tf.split('aws_cloudfront_distribution" "hitl"')[1].split('resource "aws_')[0]
+    code_only = _strip_comments(cf_block)
+    assert "forwarded_values" not in code_only, (
+        "default_cache_behavior must NOT use legacy forwarded_values (M2 fix)"
+    )
+    # AWS-managed policy IDs (well-known constants).
+    assert "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" in cf_block, (
+        "cache_policy_id must reference Managed-CachingDisabled"
+    )
+    assert "216adef6-5c7f-47e4-b989-5492eafa07d3" in cf_block, (
+        "origin_request_policy_id must reference Managed-AllViewer (preserves headers/cookies)"
+    )
+
+
+def test_cloudfront_geo_restriction_allows_external_access(main_tf: str) -> None:
+    """M3 from 1st AI review: ADR-013 Positive 항목 "외부 접근" 의도와 KR-only
+    whitelist 모순. restriction_type = "none" — Cognito + WAF 가 접근 제어."""
+    cf_block = main_tf.split('aws_cloudfront_distribution" "hitl"')[1].split('resource "aws_')[0]
+    assert 'restriction_type = "none"' in cf_block, (
+        "geo_restriction must be `none` to honor ADR-013 external access goal"
+    )
+    assert '"KR"' not in cf_block, "KR-only whitelist contradicts external access intent"

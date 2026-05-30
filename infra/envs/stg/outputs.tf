@@ -42,3 +42,5 @@ output "hitl_ecr_repo_url" { value = module.hitl_ui.ecr_repo_url }
 output "hitl_cognito_pool_id" { value = module.hitl_ui.cognito_pool_id }
 output "hitl_ecs_cluster_name" { value = module.hitl_ui.ecs_cluster_name }
 output "hitl_ecs_service_name" { value = module.hitl_ui.ecs_service_name }
+output "hitl_cloudfront_distribution_id" { value = module.hitl_ui.cloudfront_distribution_id }
+output "hitl_cloudfront_domain_name" { value = module.hitl_ui.cloudfront_domain_name }
