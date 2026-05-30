@@ -80,7 +80,7 @@ gh pr create --base main --fill   # 또는 GitHub UI
 ```
 
 PR 올라가면 자동으로:
-1. **AI Review** (`.github/workflows/pr-review.yml`) — Claude (Bedrock Opus 4.7) 가 CLAUDE.md 룰 기준으로 리뷰 → PR 코멘트
+1. **AI Review** (`.github/workflows/pr-review.yml`) — Claude (Bedrock Opus 4.8) 가 CLAUDE.md 룰 기준으로 리뷰 → PR 코멘트
 2. **CI** (`.github/workflows/ci.yml`) — ruff + mypy + pytest + terraform fmt/validate + tfsec
 3. **Terraform Plan** (`.github/workflows/terraform-plan.yml`) — `infra/**` 변경 시 `dev` plan → PR 코멘트
 

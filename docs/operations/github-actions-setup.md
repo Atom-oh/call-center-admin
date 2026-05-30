@@ -8,7 +8,7 @@
 
 | 워크플로우 | 트리거 | runs-on | 권한 | 비용 |
 |------------|--------|---------|------|------|
-| `pr-review.yml` | `pull_request_target` | `call-center-admin-claude-arm` | Bedrock InvokeModel (read-only) | Claude Opus 4.7 호출당 ~$0.05~0.50 |
+| `pr-review.yml` | `pull_request_target` | `call-center-admin-claude-arm` | Bedrock InvokeModel (read-only) | Claude Opus 4.8 호출당 ~$0.05~0.50 |
 | `ci.yml` | `pull_request`, `push:main`, `workflow_dispatch` | `call-center-admin-arm` | 없음 | 러너 시간 |
 | `terraform-plan.yml` | `pull_request` infra 변경 | `call-center-admin-x86` | AWS read-only | tfstate S3 GET + 짧은 plan 호출 |
 | `terraform-apply.yml` | `push:main` infra 변경 + `workflow_dispatch` | `call-center-admin-x86` | AWS Terraform apply | apply 결과에 따라 |
@@ -150,7 +150,7 @@ stg / prd 는 `sub` 의 `environment:dev` 를 `environment:stg` / `environment:p
 `pr-review.yml` 의 `claude -p ... --output-format text` 호출은 다음 env 변수로 Bedrock 백엔드를 사용한다:
 
 - `CLAUDE_CODE_USE_BEDROCK=1`
-- `ANTHROPIC_MODEL=apac.anthropic.claude-opus-4-7-20260101-v1:0` (Asia Pacific cross-region inference profile)
+- `ANTHROPIC_MODEL=global.anthropic.claude-opus-4-8` (Asia Pacific cross-region inference profile)
 - `ANTHROPIC_BEDROCK_BASE_URL=https://bedrock-runtime.ap-northeast-2.amazonaws.com`
 
 권한은 **러너 IAM Instance Profile** 의 `bedrock:InvokeModel` 만으로 충분 (OIDC role 불필요). aws-fsi-demo 와 동일 패턴 — 워크플로우가 `aws-actions/configure-aws-credentials` 를 호출하지 않으므로 boto3 / claude CLI 가 EC2 Instance Metadata Service 에서 자동으로 자격을 가져온다.
