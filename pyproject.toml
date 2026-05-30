@@ -58,12 +58,9 @@ disallow_untyped_defs = false
 disallow_untyped_decorators = false
 disallow_untyped_calls = false
 
-# Streamlit 은 stub 패키지가 없고 (types-streamlit 부재) HITL UI 의 페이지/엔트리는
-# 동적 페이지 등록 패턴이라 strict 검사 의미 낮음. hitl_lib 만 strict 유지.
+# Streamlit 은 stub 패키지가 없어 import-not-found 가 strict 모드에서 발생.
+# hitl_lib/auth.py 의 `import streamlit as st` 만 영향. (streamlit_app.py 와
+# pages/ 는 위의 [tool.mypy].exclude 로 처리되어 본 override 가 중복이지 않음)
 [[tool.mypy.overrides]]
 module = "streamlit"
 ignore_missing_imports = true
-
-[[tool.mypy.overrides]]
-module = ["streamlit_app", "pages.*"]
-ignore_errors = true
