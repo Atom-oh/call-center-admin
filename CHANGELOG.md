@@ -12,6 +12,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 
 ## [Unreleased]
 
+### Changed
+- **PR Review model**: `.github/workflows/pr-review.yml` bumped from Claude Opus 4.7 → **Opus 4.8** (`global.anthropic.claude-opus-4-8`). Production classify / verify Lambda still pin Opus 4.7 / Sonnet 4.6 — that change requires ADR-010 update + golden-set regression re-evaluation, tracked separately.
+
 ### Added
 - **GitHub Actions branch workflow** (`.github/workflows/`): `pr-review.yml` runs Claude Opus 4.7 on Bedrock against every PR and posts a structured review comment (filters out generated taxonomy artifacts + Terraform build dirs, caps diff at 3000 lines). `ci.yml` runs ruff + mypy + pytest with coverage + terraform fmt/validate + tflint + tfsec, with path filters that scope work to changed areas. `terraform-plan.yml` posts a `dev` plan as a PR comment on `infra/**` changes. `terraform-apply.yml` runs on push-to-main (dev auto-apply) and `workflow_dispatch` (stg/prd manual with environment protection).
 - `.github/pull_request_template.md` enforcing the project's checklist (pytest baseline, ruff, mypy, terraform validate, Mermaid for ADRs, impact callouts).
@@ -49,6 +52,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and 
 # 한국어
 
 ## [Unreleased]
+
+### 변경됨
+- **PR Review 모델**: `.github/workflows/pr-review.yml` 의 Bedrock 모델 ID 를 Opus 4.7 → **Opus 4.8** (`global.anthropic.claude-opus-4-8`) 로 변경. production classify / verify Lambda 의 Opus 4.7 / Sonnet 4.6 은 그대로 (ADR-010 갱신 + 골든셋 재평가 후 별도 PR 로 처리).
 
 ### 추가됨
 - **GitHub Actions 브랜치 워크플로우** (`.github/workflows/`): `pr-review.yml` 가 매 PR마다 Claude Opus 4.7 (Bedrock 호스팅) 으로 변경 사항 리뷰 후 구조화된 코멘트 게시 (생성된 taxonomy 산출물 + Terraform build dir 필터, diff 3000줄 cap). `ci.yml` 이 ruff + mypy + pytest(+coverage) + terraform fmt/validate + tflint + tfsec 실행, 변경 영역 path filter 적용. `terraform-plan.yml` 이 `infra/**` 변경 시 `dev` plan 결과를 PR 코멘트로 게시. `terraform-apply.yml` 이 main 머지 시 dev 자동 apply, stg/prd 는 `workflow_dispatch` + environment 보호 룰로 수동.
