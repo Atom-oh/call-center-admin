@@ -112,7 +112,7 @@ def test_atlantis_yaml_has_project_for_env(env: str) -> None:
 
     # Extract the block — from the project entry header to the next "- name:" or EOF.
     block_start = match.start()
-    next_match = re.search(r"\n  - name:", yaml[match.end():])
+    next_match = re.search(r"\n  - name:", yaml[match.end() :])
     block_end = match.end() + next_match.start() if next_match else len(yaml)
     block = yaml[block_start:block_end]
 
@@ -121,4 +121,24 @@ def test_atlantis_yaml_has_project_for_env(env: str) -> None:
     )
     assert "mergeable" in block, (
         f"atlantis.yaml `{env}` project block must require `mergeable` before apply"
+    )
+
+
+@pytest.mark.parametrize("env", ("stg", "prd"))
+def test_audit_retention_5y_in_stg_prd(env: str) -> None:
+    """ADR-012: 전자금융거래법 §22 — stg/prd 의 hitl_ui 호출에 audit_retention_days
+    = 1827 (5년) override 가 명시되어야 한다. module default (365d) 회귀 차단."""
+    main_tf = (_env_path(env) / "main.tf").read_text(encoding="utf-8")
+    # hitl_ui 모듈 호출 블록 추출.
+    match = re.search(r'module\s+"hitl_ui"\s*\{', main_tf)
+    assert match, f"infra/envs/{env}/main.tf does not call module hitl_ui"
+
+    # 블록 끝 (다음 module / EOF) 까지.
+    rest = main_tf[match.end() :]
+    end_match = re.search(r"\nmodule\s+\"", rest)
+    block = rest[: end_match.start()] if end_match else rest
+
+    assert re.search(r"audit_retention_days\s*=\s*1827\b", block), (
+        f"infra/envs/{env}/main.tf hitl_ui block must set `audit_retention_days = 1827` "
+        "(ADR-012 — 전자금융거래법 §22 5년 보존)"
     )

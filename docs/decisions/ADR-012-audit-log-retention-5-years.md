@@ -77,7 +77,7 @@ flowchart TD
 - app log retention (90d) 과 audit log retention (1827d) 가 분리되어 비용 최소 + 의무 충족 양립
 
 ### Negative
-- CloudWatch Logs 비용 ↑: audit log 가 5년치 누적. 추정 일 record 수 = 운영팀 5명 × 100건/day = 500 events × ~200B/event ≈ 30MB/년 × 5년 = 150MB. 비용 영향 미미 (월 $0.01 미만).
+- CloudWatch Logs 비용 ↑: audit log 가 5년치 누적. 추정 일 record 수 = 운영팀 5명 × 100건/day = 500 events × ~200B/event = 100KB/day × 365 ≈ 36.5MB/년 × 5년 ≈ **183MB**. 비용 영향 미미 (월 $0.01 미만, S3 export 없이 CW Logs 보관 기준).
 - prd / stg 의 retention 변경 시 module 내부 default 가 아닌 env 별 override 라 변경 시 두 곳 동시 수정 필요. 본 ADR 로 변경 이력 명시.
 
 ### Neutral
