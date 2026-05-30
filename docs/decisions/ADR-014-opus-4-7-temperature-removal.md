@@ -32,6 +32,8 @@ Claude Opus 4.7 (`global.anthropic.claude-opus-4-7`) 모델 카드 변경: `temp
 3. **Sonnet cross-verify**: confidence < 0.85 시 verify Lambda 가 2차 분류 → 불일치 시 HITL 큐로 라우팅 (변동성을 사람이 흡수)
 4. **maxTokens=1024 유지**: 출력 길이 상한은 그대로
 
+**샘플링 파라미터 정책**: `temperature` 뿐 아니라 `top_p` / `top_k` 도 `inferenceConfig` 에 전달하지 않는다 (셋 모두 Opus 4.7+ 미지원). `inferenceConfig` 의 허용 key 는 `maxTokens` 단독. 회귀 테스트가 3개 모두 부재를 가드.
+
 `temperature` 미지원은 **모델 측 강제 사항**이므로 대안 선택지가 없다. 본 ADR 은 "제거하되 재현성을 어떻게 담보하는가" 의 결정.
 
 ## Architecture Flow
