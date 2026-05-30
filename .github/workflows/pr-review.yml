@@ -27,7 +27,7 @@ jobs:
       # arn:aws:bedrock:ap-northeast-2::foundation-model/anthropic.claude-opus-4-*
       # + arn:aws:bedrock:ap-northeast-2:ACCOUNT:inference-profile/global.anthropic.claude-opus-4-*
       # 권한이 부여되어 있어야 함.
-      ANTHROPIC_MODEL: global.anthropic.claude-opus-4-7
+      ANTHROPIC_MODEL: global.anthropic.claude-opus-4-8
       CLAUDE_CODE_USE_BEDROCK: 1
       ANTHROPIC_BEDROCK_BASE_URL: https://bedrock-runtime.ap-northeast-2.amazonaws.com
       AWS_REGION: ap-northeast-2
@@ -73,7 +73,7 @@ jobs:
           echo "total_lines=$TOTAL_LINES" >> "$GITHUB_ENV"
           echo "Diff: $TOTAL_LINES lines (raw $RAW, filtered $((RAW - TOTAL_LINES)))"
 
-      - name: Review with Claude Code (Bedrock Opus 4.7)
+      - name: Review with Claude Code (Bedrock Opus 4.8)
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
@@ -160,7 +160,7 @@ jobs:
           sed '$ { /^VERDICT:/d }' /tmp/review.md > /tmp/review-clean.md
           {
             echo "$MARKER"
-            echo "## 🤖 AI Code Review (Claude Opus 4.7 on Bedrock)"
+            echo "## 🤖 AI Code Review (Claude Opus 4.8 on Bedrock)"
             echo ""
             echo "$STATUS_BADGE"
             echo ""

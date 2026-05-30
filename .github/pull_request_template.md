@@ -44,7 +44,7 @@
 
 ## 자동화
 
-- **PR-Review**: Claude (Bedrock Opus 4.7) 가 본 PR을 자동 리뷰하여 코멘트로 게시
+- **PR-Review**: Claude (Bedrock Opus 4.8) 가 본 PR을 자동 리뷰하여 코멘트로 게시
 - **CI**: ruff + mypy + pytest + terraform fmt/validate + tfsec
 - **Terraform Plan**: `infra/**` 변경 시 `terraform plan` 결과 PR 코멘트
 - **Terraform Apply**: main 머지 시 `dev` 환경 자동 apply (`environment: dev` 보호 룰 적용)

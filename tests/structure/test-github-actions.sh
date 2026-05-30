@@ -33,7 +33,7 @@ assert_grep "mergeable" "atlantis.yaml" "atlantis requires PR to be mergeable be
 assert_grep "pull_request_target" ".github/workflows/pr-review.yml" "pr-review uses pull_request_target trigger"
 assert_grep "CLAUDE_CODE_USE_BEDROCK" ".github/workflows/pr-review.yml" "pr-review uses Bedrock backend"
 assert_grep "ANTHROPIC_BEDROCK_BASE_URL" ".github/workflows/pr-review.yml" "pr-review sets Bedrock base URL"
-assert_grep "global.anthropic.claude-opus-4-7" ".github/workflows/pr-review.yml" "pr-review uses global cross-region inference profile"
+assert_grep "global.anthropic.claude-opus-4-8" ".github/workflows/pr-review.yml" "pr-review uses global cross-region inference profile"
 assert_grep "taxonomy_tree" ".github/workflows/pr-review.yml" "pr-review filters generated taxonomy artifacts"
 assert_grep "claude -p" ".github/workflows/pr-review.yml" "pr-review invokes claude CLI with -p (system prompt)"
 assert_grep "output-format text" ".github/workflows/pr-review.yml" "pr-review uses output-format text (not json)"
