@@ -96,24 +96,25 @@ resource "aws_cognito_user_group" "compliance" {
 # Security groups — ALB internal + ECS ingress   #
 ##################################################
 
-# ADR-013: ALB ingress restricted to CloudFront origin-facing IPs (managed
-# prefix list). Direct intranet ingress is no longer needed — all traffic
-# arrives via CloudFront VPC Origin.
-data "aws_ec2_managed_prefix_list" "cloudfront_origin_facing" {
-  name = "com.amazonaws.global.cloudfront.origin-facing"
+# ADR-013 (1차 리뷰 C1/M1 반영): 실제 CloudFront VPC Origin 사용.
+# VPC Origin 은 CloudFront edge ↔ ALB 사이를 AWS 내부 네트워크로 잇는 link.
+# 인터넷 경유 CF prefix list 와 의미가 달라 ALB SG ingress 는
+# VPC CIDR 로 제한한다 (VPC Origin 은 VPC 내부 ENI 로 인입).
+data "aws_vpc" "this" {
+  id = var.vpc_id
 }
 
 resource "aws_security_group" "alb" {
   name_prefix = "callcenter-${var.env}-hitl-alb-"
-  description = "Internal ALB ingress for HITL UI (CloudFront origin only)"
+  description = "Internal ALB ingress for HITL UI (VPC Origin only)"
   vpc_id      = var.vpc_id
 
   ingress {
-    description     = "HTTP from CloudFront edge (ADR-013)"
-    from_port       = 80
-    to_port         = 80
-    protocol        = "tcp"
-    prefix_list_ids = [data.aws_ec2_managed_prefix_list.cloudfront_origin_facing.id]
+    description = "HTTP from CloudFront VPC Origin (ADR-013, internal AWS link)"
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = [data.aws_vpc.this.cidr_block]
   }
 
   egress {
@@ -278,6 +279,26 @@ resource "aws_wafv2_web_acl" "hitl" {
   }
 }
 
+# C1 from 1st AI review: 실제 CloudFront VPC Origin endpoint 등록.
+# CloudFront edge ↔ ALB 간 트래픽이 AWS internal network 로 직행 —
+# public 인터넷 경유 0. ALB 가 internal=true 여도 도달 가능.
+resource "aws_cloudfront_vpc_origin" "hitl" {
+  count = var.acm_certificate_arn_us_east_1 != "" ? 1 : 0
+
+  vpc_origin_endpoint_config {
+    name                   = "callcenter-${var.env}-hitl-vpc-origin"
+    arn                    = aws_lb.hitl.arn
+    http_port              = 80
+    https_port             = 443
+    origin_protocol_policy = "http-only"
+
+    origin_ssl_protocols {
+      items    = ["TLSv1.2"]
+      quantity = 1
+    }
+  }
+}
+
 # CloudFront distribution — gated on the us-east-1 ACM certificate being issued.
 # Without the cert the CF is omitted; the ALB still stands up and can be
 # reached over the VPC for internal smoke tests but no public DNS is bound.
@@ -293,16 +314,14 @@ resource "aws_cloudfront_distribution" "hitl" {
   aliases = [var.callback_domain]
 
   origin {
-    # VPC Origin: CloudFront talks to the ALB over the AWS network. Origin
-    # protocol is HTTP because TLS terminates at the CF edge.
+    # C1 fix: VPC Origin via aws_cloudfront_vpc_origin resource. CloudFront
+    # uses an AWS-internal link to reach the (internal) ALB. domain_name is
+    # still required for SNI / host header.
     domain_name = aws_lb.hitl.dns_name
     origin_id   = "hitl-alb"
 
-    custom_origin_config {
-      http_port              = 80
-      https_port             = 443
-      origin_protocol_policy = "http-only"
-      origin_ssl_protocols   = ["TLSv1.2"]
+    vpc_origin_config {
+      vpc_origin_id = aws_cloudfront_vpc_origin.hitl[0].id
     }
   }
 
@@ -312,18 +331,16 @@ resource "aws_cloudfront_distribution" "hitl" {
     allowed_methods        = ["GET", "HEAD", "OPTIONS", "PUT", "POST", "PATCH", "DELETE"]
     cached_methods         = ["GET", "HEAD"]
     compress               = true
-    # No caching for dynamic HITL pages — Streamlit responses are user-specific.
-    min_ttl     = 0
-    default_ttl = 0
-    max_ttl     = 0
 
-    forwarded_values {
-      query_string = true
-      headers      = ["*"]
-      cookies {
-        forward = "all"
-      }
-    }
+    # M2 from 1st AI review: legacy forwarded_values { headers=["*"] } 는 invalid.
+    # AWS managed policies 사용:
+    #   - cache_policy_id          = Managed-CachingDisabled
+    #     (4135ea2d-6df8-44a3-9df3-4b5a84be39ad)
+    #   - origin_request_policy_id = Managed-AllViewer
+    #     (216adef6-5c7f-47e4-b989-5492eafa07d3)
+    # Streamlit 의 websocket / Set-Cookie / Authorization 모두 보존.
+    cache_policy_id          = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"
+    origin_request_policy_id = "216adef6-5c7f-47e4-b989-5492eafa07d3"
   }
 
   viewer_certificate {
@@ -332,10 +349,13 @@ resource "aws_cloudfront_distribution" "hitl" {
     minimum_protocol_version = "TLSv1.2_2021"
   }
 
+  # M3 from 1st AI review: ADR-013 의 "외부 접근 가능" 의도와 KR-only whitelist 가
+  # 모순이었음. 기본 restriction_type="none" 으로 변경 — 외근 / 출장 시 접근 가능.
+  # 접근 제어는 다층 (1) Cognito 인증 (2) WAF managed rules. 사내 IP allowlist 가
+  # 필요해지면 var.geo_restriction_locations 노출 추가.
   restrictions {
     geo_restriction {
-      restriction_type = "whitelist"
-      locations        = ["KR"]
+      restriction_type = "none"
     }
   }
 
