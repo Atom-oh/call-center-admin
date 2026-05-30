@@ -36,7 +36,7 @@
 ## Rules
 
 - 시스템 프롬프트는 `system_rules.md` + `taxonomy_tree.json` 두 블록. 각 블록 뒤에 `{"cachePoint": {"type": "default"}}` (Bedrock Converse 정확한 형식).
-- temperature=0.0, maxTokens=1024.
+- maxTokens=1024. **temperature 미설정** — Opus 4.7+ 가 `temperature` 파라미터를 받지 않음 (ValidationException). 결정성은 prompt 룰 + output schema 검증으로 담보. (ADR-014)
 - 모델 출력 JSON은 `lib.output_schema.parse_and_validate` 가 검증 — 마크다운 fence 제거, top-level dict 강제, unknown code 거부, confidence [0,1] + bool 거부.
 - Bedrock 예외는 throw — SFN의 Retry/Catch가 처리 (Throttling/ServiceUnavailable 포함).
 - 콜드 스타트 비용 절감: `_RULES`, `_TREE`, `_BUNDLE`, `_ADAPTER`, `_s3` 모두 module-level.
