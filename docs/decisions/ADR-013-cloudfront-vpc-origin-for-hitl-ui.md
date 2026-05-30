@@ -128,12 +128,20 @@ flowchart TD
 
 ## Implementation Notes
 
+1차 AI 리뷰 (C1/M1/M2/M3) 반영:
+
 - **Provider alias**: `infra/envs/{env}/main.tf` 에 `provider "aws" { alias = "us_east_1", region = "us-east-1" }` 추가. hitl-ui module 호출에 `providers = { aws.us_east_1 = aws.us_east_1 }` 전달.
 - **hitl-ui module 변경**:
-  - `aws_cloudfront_distribution.hitl` — VPC Origin via `origin { domain_name = aws_lb.hitl.dns_name, custom_origin_config = ... }` (또는 GA 된 `aws_cloudfront_vpc_origin` resource 사용)
+  - **`aws_cloudfront_vpc_origin.hitl`** — VPC Origin endpoint 정식 도입. `vpc_origin_endpoint_config { arn = aws_lb.hitl.arn, http_port = 80, origin_protocol_policy = "http-only" }`. (C1 fix — `custom_origin_config` 만 사용하면 internet-routed 라 internal ALB 에 도달 불가)
+  - `aws_cloudfront_distribution.hitl` 의 origin 블록은 `vpc_origin_config { vpc_origin_id = aws_cloudfront_vpc_origin.hitl[0].id }` 사용
   - `aws_wafv2_web_acl.hitl` — CloudFront scope, provider = aws.us_east_1
   - `aws_lb_listener.http` — port 80, default_action authenticate-cognito → forward
-  - ALB SG ingress: managed prefix list `com.amazonaws.global.cloudfront.origin-facing`
+  - **ALB SG ingress**: VPC CIDR (`data.aws_vpc.this.cidr_block`). VPC Origin 은 AWS internal link 라 인터넷-경유 CF prefix list 와 의미 다름. (M1 fix)
+  - **default_cache_behavior**: legacy `forwarded_values` 제거 → AWS managed policies 사용 (M2 fix):
+    - `cache_policy_id = "4135ea2d-6df8-44a3-9df3-4b5a84be39ad"` (Managed-CachingDisabled)
+    - `origin_request_policy_id = "216adef6-5c7f-47e4-b989-5492eafa07d3"` (Managed-AllViewer)
+    - Streamlit websocket / Set-Cookie / Authorization 헤더 보존
+  - **geo_restriction**: `restriction_type = "none"` — ADR Positive "외부 접근" 의도와 일관 (M3 fix). 접근 제어는 Cognito + WAF 다층.
 - **변수 변경**:
   - `acm_certificate_arn` → `acm_certificate_arn_us_east_1` (CloudFront 전용)
   - `callback_domain` default 변경: `.internal` → `.kakaopay.com`
@@ -141,10 +149,16 @@ flowchart TD
   - 신규: `cloudfront_distribution_id`, `cloudfront_domain_name`
   - 기존 `alb_dns_name` 은 디버그용으로 유지 (description: "Internal ALB DNS — CloudFront origin")
 - **회귀 가드** (`tests/integration/test_hitl_ui_definition.py`):
-  - `test_cloudfront_distribution_defined` — `aws_cloudfront_distribution.hitl` 존재
-  - `test_cloudfront_origin_protocol_https_to_alb_http_ok` — viewer-protocol = HTTPS, origin = HTTP (ADR 명시)
-  - `test_waf_web_acl_attached_to_cloudfront` — WAF 존재 + scope=CLOUDFRONT
-  - `test_alb_sg_ingress_uses_cloudfront_prefix_list` — managed prefix list 사용
+  - `test_cloudfront_distribution_defined`
+  - `test_cloudfront_uses_vpc_origin_resource` (C1)
+  - `test_cloudfront_vpc_origin_points_to_alb_with_http_only`
+  - `test_alb_is_internal_not_public` — VPC CIDR ingress 검증 (M1)
+  - `test_cloudfront_uses_managed_cache_and_origin_request_policies` (M2)
+  - `test_cloudfront_geo_restriction_allows_external_access` (M3)
+  - `test_waf_v2_attached_to_cloudfront_scope`
+  - `test_cloudfront_viewer_uses_acm_us_east_1_and_tls12_min`
+  - `test_cloudfront_alias_uses_callback_domain`
+  - `test_provider_us_east_1_alias_required`
 
 ## References
 

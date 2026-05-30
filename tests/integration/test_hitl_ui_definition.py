@@ -101,22 +101,27 @@ def test_cognito_user_groups_define_three_roles(main_tf: str) -> None:
 
 
 def test_alb_is_internal_not_public(main_tf: str) -> None:
-    """G7: ALB must be internal. ADR-013 changes ingress source: instead of
-    a CIDR block, the ALB now accepts traffic only from the CloudFront managed
-    prefix list (VPC Origin)."""
+    """G7 + M1 from 1st AI review: ALB internal. With real VPC Origin (C1 fix),
+    ingress source becomes the VPC CIDR — VPC Origin is an AWS-internal link
+    that arrives at the ALB from within the VPC. The CloudFront managed prefix
+    list `cloudfront.origin-facing` is for internet-routed CF, NOT VPC Origin.
+    """
     import re
 
     assert 'resource "aws_lb" "hitl"' in main_tf
     lb_block = main_tf.split('aws_lb" "hitl"')[1].split('resource "aws_')[0]
     assert re.search(r"internal\s*=\s*true\b", lb_block), "ALB must be internal"
-    # SG ingress must NOT use 0.0.0.0/0 (direct internet) and must use the
-    # CloudFront origin-facing prefix list (ADR-013).
     sg_alb_block = main_tf.split('aws_security_group" "alb"')[1].split('resource "aws_')[0]
     assert '"0.0.0.0/0"' not in sg_alb_block.split("ingress")[1].split("egress")[0], (
         "ALB SG must not have 0.0.0.0/0 ingress"
     )
-    assert "com.amazonaws.global.cloudfront.origin-facing" in main_tf, (
-        "ALB ingress must use CloudFront managed prefix list (ADR-013)"
+    # M1 fix: ingress source is VPC CIDR (data.aws_vpc.this.cidr_block), not the
+    # internet-routed CloudFront prefix list.
+    assert "data.aws_vpc.this.cidr_block" in main_tf, (
+        "ALB SG ingress must use VPC CIDR for VPC Origin traffic (ADR-013 M1 fix)"
+    )
+    assert "com.amazonaws.global.cloudfront.origin-facing" not in main_tf, (
+        "ALB SG must NOT use the internet-routed CF prefix list — that contradicts VPC Origin"
     )
 
 
@@ -296,12 +301,32 @@ def test_cloudfront_distribution_defined(main_tf: str) -> None:
     assert 'resource "aws_cloudfront_distribution" "hitl"' in main_tf
 
 
-def test_cloudfront_origin_points_to_alb_with_http_only(main_tf: str) -> None:
-    """ADR-013: CloudFront → ALB origin uses HTTP (TLS terminates at CF edge)."""
+def test_cloudfront_uses_vpc_origin_resource(main_tf: str) -> None:
+    """C1 from 1st AI review: CloudFront must reach the internal ALB via a real
+    VPC Origin (aws_cloudfront_vpc_origin resource + vpc_origin_config block).
+    custom_origin_config alone is internet-routed and CANNOT reach internal=true ALBs.
+    """
+    assert 'resource "aws_cloudfront_vpc_origin" "hitl"' in main_tf, (
+        "Must declare aws_cloudfront_vpc_origin resource (ADR-013 C1 fix)"
+    )
     cf_block = main_tf.split('aws_cloudfront_distribution" "hitl"')[1].split('resource "aws_')[0]
-    assert "aws_lb.hitl.dns_name" in cf_block, "CF origin must reference the internal ALB"
-    assert 'origin_protocol_policy = "http-only"' in cf_block, (
-        "CF → ALB must be HTTP (TLS at CF edge per ADR-013)"
+    assert "vpc_origin_config" in cf_block, (
+        "CF origin block must use vpc_origin_config (not custom_origin_config)"
+    )
+    assert "aws_cloudfront_vpc_origin.hitl[0].id" in cf_block, (
+        "vpc_origin_config must reference the aws_cloudfront_vpc_origin resource"
+    )
+
+
+def test_cloudfront_vpc_origin_points_to_alb_with_http_only(main_tf: str) -> None:
+    """ADR-013: VPC Origin endpoint targets the ALB ARN with HTTP-only protocol
+    (TLS terminates at CF edge)."""
+    vpc_origin_block = main_tf.split('aws_cloudfront_vpc_origin" "hitl"')[1].split(
+        'resource "aws_'
+    )[0]
+    assert "aws_lb.hitl.arn" in vpc_origin_block, "VPC Origin must target the ALB ARN"
+    assert 'origin_protocol_policy = "http-only"' in vpc_origin_block, (
+        "CF → ALB must be HTTP-only (TLS at CF edge per ADR-013)"
     )
 
 
@@ -334,3 +359,31 @@ def test_provider_us_east_1_alias_required(main_tf: str) -> None:
     """ADR-013: module declares the us-east-1 provider configuration alias."""
     assert "configuration_aliases" in main_tf
     assert "aws.us_east_1" in main_tf
+
+
+def test_cloudfront_uses_managed_cache_and_origin_request_policies(main_tf: str) -> None:
+    """M2 from 1st AI review: legacy forwarded_values { headers=["*"] } 는 invalid.
+    Managed-CachingDisabled (4135ea2d-...) + Managed-AllViewer (216adef6-...) 사용.
+    """
+    cf_block = main_tf.split('aws_cloudfront_distribution" "hitl"')[1].split('resource "aws_')[0]
+    code_only = _strip_comments(cf_block)
+    assert "forwarded_values" not in code_only, (
+        "default_cache_behavior must NOT use legacy forwarded_values (M2 fix)"
+    )
+    # AWS-managed policy IDs (well-known constants).
+    assert "4135ea2d-6df8-44a3-9df3-4b5a84be39ad" in cf_block, (
+        "cache_policy_id must reference Managed-CachingDisabled"
+    )
+    assert "216adef6-5c7f-47e4-b989-5492eafa07d3" in cf_block, (
+        "origin_request_policy_id must reference Managed-AllViewer (preserves headers/cookies)"
+    )
+
+
+def test_cloudfront_geo_restriction_allows_external_access(main_tf: str) -> None:
+    """M3 from 1st AI review: ADR-013 Positive 항목 "외부 접근" 의도와 KR-only
+    whitelist 모순. restriction_type = "none" — Cognito + WAF 가 접근 제어."""
+    cf_block = main_tf.split('aws_cloudfront_distribution" "hitl"')[1].split('resource "aws_')[0]
+    assert 'restriction_type = "none"' in cf_block, (
+        "geo_restriction must be `none` to honor ADR-013 external access goal"
+    )
+    assert '"KR"' not in cf_block, "KR-only whitelist contradicts external access intent"
