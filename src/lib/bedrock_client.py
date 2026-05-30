@@ -44,7 +44,7 @@ class BedrockAdapter:
                     "content": [{"text": self.bundle.build_user_message(masked_transcript)}],
                 }
             ],
-            inferenceConfig={"maxTokens": self.max_tokens, "temperature": 0.0},
+            inferenceConfig={"maxTokens": self.max_tokens},
         )
         text = resp["output"]["message"]["content"][0]["text"]
         return parse_and_validate(text, self.bundle.valid_codes)
