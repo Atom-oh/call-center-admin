@@ -23,6 +23,12 @@ build/
 .terraformrc
 terraform.rc
 
+# OSS: account-specific values stay out of git. Commit only *.example.
+*.tfvars
+!*.tfvars.example
+backend.hcl
+!backend.hcl.example
+
 # Lambda 패키징 산출물
 infra/modules/*/build/
 

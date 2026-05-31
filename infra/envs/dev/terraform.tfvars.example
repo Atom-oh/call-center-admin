@@ -1,0 +1,15 @@
+# Copy to terraform.tfvars (git-ignored) and fill in account-specific values.
+#
+# CI/CD cross-account AssumeRole (leave empty for local runs with direct creds):
+terraformer_role_arn           = "arn:aws:iam::<ACCOUNT_ID>:role/<TERRAFORMER_ROLE>"
+terraformer_external_id_secret = "<secrets-manager-id-for-externalid>"
+
+# HITL UI — ACM certs + domain. Leave empty to keep HITL UI in skeleton state.
+# ALB HTTPS listener cert (ap-northeast-2):
+hitl_acm_certificate_arn = "arn:aws:acm:ap-northeast-2:<ACCOUNT_ID>:certificate/<id>"
+# CloudFront viewer cert (us-east-1):
+hitl_acm_certificate_arn_us_east_1 = "arn:aws:acm:us-east-1:<ACCOUNT_ID>:certificate/<id>"
+# Public FQDN behind CloudFront (must be covered by both certs):
+hitl_callback_domain = "callcenter-dev-hitl.example.com"
+# Streamlit image tag (commit SHA pushed to ECR):
+hitl_image_tag = "REPLACE_ME"

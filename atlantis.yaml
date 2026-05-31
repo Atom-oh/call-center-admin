@@ -1,9 +1,9 @@
 # Atlantis configuration for call-center-admin.
 # Replaces .github/workflows/terraform-{plan,apply}.yml.
 #
-# Server: https://<ATLANTIS_SERVER_URL>  (running on <INFRA_REPO> hub EKS)
-# GitHub App: <ATLANTIS_GITHUB_APP> (webhook auth, no per-repo PAT needed)
-# Repo allowlist: github.com/Atom-oh/*  (already satisfied)
+# Server: <your Atlantis server URL>  (e.g. running on an EKS hub cluster)
+# GitHub App: <your Atlantis GitHub App>  (webhook auth, no per-repo PAT needed)
+# Repo allowlist: configured server-side.
 #
 # Workflow:
 #   1. Open a PR that touches infra/**         → Atlantis auto-runs `plan`, posts to PR
@@ -12,24 +12,17 @@
 #   4. Merge PR
 #
 # IMPORTANT — IAM PREREQUISITE:
-# The Atlantis pod runs as IRSA `<ATLANTIS_IRSA_ROLE>` (in account <ACCOUNT_ID>).
-# To drive Terraform here, one of the following must be set up:
+# The Atlantis runner needs permission to manage this project's resources. Either:
 #
-#   Option A (recommended): grant <ATLANTIS_IRSA_ROLE> permission to AssumeRole into
-#     `callcenter-github-actions-tf-plan` and `callcenter-github-actions-tf-apply-dev`
-#     (and the stg/prd equivalents), then add an `assume_role` block to the
-#     provider in each env's main.tf:
+#   Option A (recommended): give the Atlantis identity AssumeRole into a
+#     dedicated terraformer role, then set `terraformer_role_arn` +
+#     `terraformer_external_id_secret` in each env's terraform.tfvars
+#     (git-ignored). The provider blocks already wire these in.
 #
-#         provider "aws" {
-#           region = "ap-northeast-2"
-#           assume_role { role_arn = "arn:aws:iam::<acct>:role/callcenter-...-tf-apply-dev" }
-#         }
+#   Option B: attach the resource permissions this project needs (Bedrock,
+#     Lambda, SFN, S3, DDB, KMS, etc.) directly to the Atlantis identity.
 #
-#   Option B: extend <ATLANTIS_IRSA_ROLE>'s policy with the resource permissions
-#     this project needs (Bedrock, Lambda, SFN, S3, DDB, KMS, etc.) — less clean
-#     but avoids the trust-policy edit.
-#
-# Without one of these, `terraform plan` will fail with credentials errors.
+# Without one of these, `terraform plan` fails with credentials errors.
 
 version: 3
 automerge: false
@@ -38,8 +31,8 @@ parallel_apply: false
 delete_source_branch_on_merge: false
 
 projects:
-  # dev env uses the shared tfstate bucket `<YOUR_TFSTATE_BUCKET>`
-  # (ap-northeast-2). The bucket is CLI-bootstrapped one-time outside
+  # dev env tfstate lives in an S3 bucket supplied via partial backend config
+  # (backend.hcl, git-ignored). The bucket is CLI-bootstrapped one-time outside
   # Terraform — see docs/operations/atlantis-setup.md.
   # Key prefix: call-center-admin/envs/dev.tfstate
   # No DDB lock — non-prod / single operator.
@@ -89,9 +82,8 @@ projects:
       - approved
       - mergeable
 
-# Custom workflows are NOT declared here. The server-side repos.yaml
-# (in Atom-oh/<INFRA_REPO>: k8s/system/atlantis/configmap.yaml)
-# declares the `standard` workflow which all projects above use by default.
-# To declare custom workflows in this file, the server-side repo config
-# for github.com/Atom-oh/call-center-admin would need
+# Custom workflows are NOT declared here. The server-side repo config
+# (Atlantis repos.yaml / configmap) declares the `standard` workflow which all
+# projects above use by default. To declare custom workflows in this file, the
+# server-side repo config for this repository would need
 # `allow_custom_workflows: true`.
