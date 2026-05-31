@@ -171,6 +171,36 @@ def test_alb_https_listener_and_ecs_gated_on_acm(main_tf: str) -> None:
     )
 
 
+def test_cloudfront_stack_gated_on_both_certs(main_tf: str) -> None:
+    """AI 리뷰 MAJOR (PR #24): CloudFront VPC Origin 은 https-only 라 ALB 443
+    listener (ap-northeast-2 cert) 가 있어야 생성 가능. 따라서 VPC Origin /
+    distribution / WAF 는 us-east-1 cert 단독이 아닌 **양쪽 cert**
+    (local.cloudfront_enabled) gate 여야 한다. 한쪽만 주입 시 apply 실패 방지.
+    """
+    import re
+
+    # local.cloudfront_enabled = 양쪽 cert AND 조건
+    assert re.search(
+        r'cloudfront_enabled\s*=\s*var\.acm_certificate_arn\s*!=\s*""\s*&&\s*'
+        r'var\.acm_certificate_arn_us_east_1\s*!=\s*""',
+        main_tf,
+    ), "local.cloudfront_enabled must require BOTH certs"
+
+    # VPC Origin + distribution 이 local.cloudfront_enabled gate 사용
+    vpc_origin_block = main_tf.split('aws_cloudfront_vpc_origin" "hitl"')[1].split("resource ")[0]
+    assert "local.cloudfront_enabled" in vpc_origin_block, (
+        "VPC Origin must gate on local.cloudfront_enabled (both certs)"
+    )
+    dist_block = main_tf.split('aws_cloudfront_distribution" "hitl"')[1].split("resource ")[0]
+    assert "local.cloudfront_enabled" in dist_block, (
+        "CloudFront distribution must gate on local.cloudfront_enabled (both certs)"
+    )
+    # us-east-1 단독 gate 가 CloudFront 스택에 남아있으면 안 됨
+    assert 'count = var.acm_certificate_arn_us_east_1 != "" ? 1 : 0' not in main_tf, (
+        "CloudFront stack must not gate on us-east-1 cert alone (AI review MAJOR)"
+    )
+
+
 def test_alb_has_no_path_pattern_forward_rule(main_tf: str) -> None:
     """C1 negative guard: there must be NO listener_rule with `path_pattern = "/*"`
     forwarding to the target group. That rule would short-circuit default_action

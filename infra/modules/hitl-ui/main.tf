@@ -25,6 +25,14 @@ terraform {
   }
 }
 
+locals {
+  # AI 리뷰 MAJOR (PR #24): CloudFront 스택 (VPC Origin / distribution / WAF) 은
+  # ALB HTTPS listener (ap-northeast-2 cert) + CloudFront viewer cert (us-east-1)
+  # 가 **둘 다** 주입돼야 켜진다. 하나만 있으면 listener 없는 ALB 를 향해 VPC
+  # Origin 이 생성되어 apply 실패하므로 양쪽 gate 로 묶는다.
+  cloudfront_enabled = var.acm_certificate_arn != "" && var.acm_certificate_arn_us_east_1 != ""
+}
+
 ##################################################
 # ECR — immutable tags (G8)                      #
 ##################################################
@@ -224,7 +232,7 @@ resource "aws_lb_listener" "https" {
 
 # WAF v2 web ACL (CLOUDFRONT scope is us-east-1 only).
 resource "aws_wafv2_web_acl" "hitl" {
-  count    = var.enable_waf && var.acm_certificate_arn_us_east_1 != "" ? 1 : 0
+  count    = var.enable_waf && local.cloudfront_enabled ? 1 : 0
   provider = aws.us_east_1
   name     = "callcenter-${var.env}-hitl"
   scope    = "CLOUDFRONT"
@@ -287,8 +295,13 @@ resource "aws_wafv2_web_acl" "hitl" {
 # C1 from 1st AI review: 실제 CloudFront VPC Origin endpoint 등록.
 # CloudFront edge ↔ ALB 간 트래픽이 AWS internal network 로 직행 —
 # public 인터넷 경유 0. ALB 가 internal=true 여도 도달 가능.
+# AI 리뷰 MAJOR (PR #24): VPC Origin 은 https-only 라 ALB 443 listener 가
+# 있어야 생성 가능. listener 는 ap-northeast-2 cert (var.acm_certificate_arn)
+# gate 이므로, VPC Origin / distribution / WAF 도 **양쪽 cert** 가 모두 주입돼야
+# 켜진다 (local.cloudfront_enabled). us-east-1 cert 만 주입 시 listener 없는
+# ALB 를 향해 VPC Origin 이 생성되어 apply 실패하는 것을 차단.
 resource "aws_cloudfront_vpc_origin" "hitl" {
-  count = var.acm_certificate_arn_us_east_1 != "" ? 1 : 0
+  count = local.cloudfront_enabled ? 1 : 0
 
   vpc_origin_endpoint_config {
     name = "callcenter-${var.env}-hitl-vpc-origin"
@@ -306,11 +319,10 @@ resource "aws_cloudfront_vpc_origin" "hitl" {
   }
 }
 
-# CloudFront distribution — gated on the us-east-1 ACM certificate being issued.
-# Without the cert the CF is omitted; the ALB still stands up and can be
-# reached over the VPC for internal smoke tests but no public DNS is bound.
+# CloudFront distribution — gated on BOTH certs (local.cloudfront_enabled).
+# Without them the CF is omitted; ALB stands up (no listener) for skeleton state.
 resource "aws_cloudfront_distribution" "hitl" {
-  count = var.acm_certificate_arn_us_east_1 != "" ? 1 : 0
+  count = local.cloudfront_enabled ? 1 : 0
 
   enabled         = true
   is_ipv6_enabled = true
