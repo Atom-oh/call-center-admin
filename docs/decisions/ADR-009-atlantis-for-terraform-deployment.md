@@ -25,7 +25,7 @@ Terraform plan/apply 는 **Atlantis** 가 처리. `.github/workflows/terraform-{
 
 **Atlantis 구성**:
 - IRSA: `<ATLANTIS_IRSA_ROLE>` (EKS service account → IAM role)
-- AssumeRole 체인: <ATLANTIS_IRSA_ROLE> → `<TERRAFORMER_ROLE>` (<AWS_ACCOUNT_ALIAS> 계정 <ACCOUNT_ID>) with `ExternalId`
+- AssumeRole 체인: Atlantis IRSA → 전용 terraformer role with `ExternalId` (계정/role 명은 terraform.tfvars 로 주입)
 - 명령: PR 댓글 `atlantis plan` / `atlantis apply`
 - `apply_requirements: [approved, mergeable]` — 승인된 PR 만 apply
 - `automerge: false` — apply 후 자동 merge 안 함 (사람이 merge)
@@ -34,11 +34,11 @@ Terraform plan/apply 는 **Atlantis** 가 처리. `.github/workflows/terraform-{
 
 ```mermaid
 flowchart TD
-    PR[GitHub PR open / push] --> WH[GitHub webhook<br/>→ <ATLANTIS_SERVER_URL>/events]
+    PR[GitHub PR open / push] --> WH[GitHub webhook<br/>→ Atlantis 서버 /events]
     WH --> AT[Atlantis<br/>EKS hub cluster]
     AT --> ART[atlantis.yaml<br/>project: dev<br/>dir: infra/envs/dev]
     AT --> IR[IRSA<br/><ATLANTIS_IRSA_ROLE>]
-    IR --> AR[AssumeRole<br/><TERRAFORMER_ROLE><br/>with ExternalId]
+    IR --> AR[AssumeRole<br/>terraformer role<br/>with ExternalId]
     AR --> TF[terraform plan / apply]
     TF -.->|결과| PRC[PR comment<br/>plan diff]
 
@@ -104,8 +104,8 @@ SaaS, 위와 동일. 거부.
 
 - `atlantis.yaml` (v3) — `projects` 에 `dir: infra/envs/dev` 매핑. `apply_requirements: [approved, mergeable]`. `automerge: false`.
 - IRSA role: `<ATLANTIS_IRSA_ROLE>` in EKS hub cluster, trust policy `pod-identity-association`
-- AssumeRole target: `arn:aws:iam::<ACCOUNT_ID>:role/<TERRAFORMER_ROLE>` (`infra/envs/dev/variables.tf:terraformer_role_arn` default)
-- GitHub App: `<ATLANTIS_GITHUB_APP>` (installation_id <INSTALLATION_ID>), webhook `https://<ATLANTIS_SERVER_URL>/events`
+- AssumeRole target: `var.terraformer_role_arn` (각 env 의 terraform.tfvars 로 주입, git-ignored)
+- GitHub App / webhook: 운영 서버 설정 (값은 비공개)
 - docs: `docs/operations/atlantis-setup.md` 가 setup 절차 + apply 명령 + IAM 체인 명시
 - 회귀 가드: `tests/structure/test-github-actions.sh` 가 `terraform-{plan,apply}.yml` 부재 + `atlantis.yaml` 존재 검증
 

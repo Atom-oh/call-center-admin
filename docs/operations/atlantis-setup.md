@@ -1,15 +1,15 @@
 # Atlantis Setup
 
-본 문서는 `call-center-admin` 의 Terraform 배포 파이프를 [Atlantis](https://www.runatlantis.io/) 로 운영하기 위한 일회성 셋업을 정리합니다. Atlantis 서버는 별도 리포(`Atom-oh/<INFRA_REPO>`) 의 EKS hub 클러스터에서 호스팅됩니다.
+본 문서는 `call-center-admin` 의 Terraform 배포 파이프를 [Atlantis](https://www.runatlantis.io/) 로 운영하기 위한 일회성 셋업을 정리합니다. Atlantis 서버는 별도 리포(별도 인프라 리포) 의 EKS hub 클러스터에서 호스팅됩니다.
 
 ## 개요
 
 | 항목 | 값 |
 |---|---|
-| Atlantis 서버 | `https://<ATLANTIS_SERVER_URL>` |
-| GitHub App | `<ATLANTIS_GITHUB_APP>` (webhook 인증) |
-| Repo allowlist | `github.com/Atom-oh/*` (이미 적용) |
-| Atlantis IRSA | `<ATLANTIS_IRSA_ROLE>` (AWS 계정 `<ACCOUNT_ID>`) |
+| Atlantis 서버 | `<ATLANTIS_SERVER_URL>` |
+| GitHub App | `<your-atlantis-github-app>` (webhook 인증) |
+| Repo allowlist | `github.com/<org>/*` |
+| Atlantis IRSA | `<ATLANTIS_IRSA_ROLE>` (배포 계정) |
 | 본 리포 설정 | `atlantis.yaml` (저장소 루트) |
 | tfstate 버킷 | `<YOUR_TFSTATE_BUCKET>` (ap-northeast-2, 공유) |
 | tfstate lock | 없음 (non-prod / single operator, TF 1.10+ 업그레이드 시 `use_lockfile=true` 로 전환) |
@@ -48,7 +48,7 @@ aws s3api put-public-access-block \
     BlockPublicAcls=true,IgnorePublicAcls=true,BlockPublicPolicy=true,RestrictPublicBuckets=true
 ```
 
-> 참고: 기존 `<LEGACY_TFSTATE_BUCKET>` 버킷 (us-east-1) 은 <INFRA_REPO> 과 multi-region-architecture 가 계속 사용. 향후 같은 새 버킷으로 마이그레이션 가능 (별도 작업).
+> 참고: tfstate 버킷은 조직별로 1회 부트스트랩 후 여러 프로젝트가 key prefix 로 공유 가능.
 
 ## 운영 흐름
 
@@ -132,7 +132,7 @@ provider "aws" {
 
 | 증상 | 원인 | 조치 |
 |---|---|---|
-| PR 에 `Ran Plan...` 코멘트가 안 옴 | webhook 미도달 | GitHub App `<ATLANTIS_GITHUB_APP>` Installation 에 본 리포가 포함되어 있는지 확인 |
+| PR 에 `Ran Plan...` 코멘트가 안 옴 | webhook 미도달 | GitHub App `<your-atlantis-github-app>` Installation 에 본 리포가 포함되어 있는지 확인 |
 | `Error: No valid credential sources` | IAM 미설정 | 위 §IAM 사전 설정 옵션 A 또는 B 적용 |
 | `Error: AccessDenied: ... not authorized to perform: sts:AssumeRole` | trust 누락 | 옵션 A의 trust statement 추가 확인 |
 | plan 은 되는데 apply 가 실패 | apply role 권한 부족 | `tf-apply-dev` role 의 inline policy 에 누락 리소스 권한 추가 |

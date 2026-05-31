@@ -1,10 +1,8 @@
 terraform {
   required_version = ">= 1.6"
-  # Shared Atlantis-managed tfstate bucket in ap-northeast-2.
-  # Per-env isolation via key suffix (envs/stg.tfstate).
+  # OSS: bucket / key via partial backend config.
+  #   terraform init -backend-config=backend.hcl
   backend "s3" {
-    bucket  = "<YOUR_TFSTATE_BUCKET>"
-    key     = "call-center-admin/envs/stg.tfstate"
     region  = "ap-northeast-2"
     encrypt = true
   }

@@ -96,7 +96,7 @@ tools/prompts/              — 실험·디버깅용 일회성 프롬프트
 - PR이 올라오면 자동 실행 (.github/workflows/):
   1. **AI 리뷰** (`pr-review.yml`) — Claude Opus 4.8 on Bedrock 이 CLAUDE.md 룰에 따라 변경 리뷰 후 코멘트
   2. **CI** (`ci.yml`) — ruff + mypy + pytest + terraform fmt/validate + tfsec + 분류 트리 산출물 stale 검사
-  3. **Atlantis** — `infra/**` 변경 시 [Atlantis](https://<ATLANTIS_SERVER_URL>) 가 PR 에 `plan` 결과 코멘트 게시.
+  3. **Atlantis** — `infra/**` 변경 시 Atlantis 서버가 PR 에 `plan` 결과 코멘트 게시.
      PR 코멘트로 `atlantis plan` / `atlantis apply` 재실행/적용. 설정: `atlantis.yaml`.
 - main 머지 시: Atlantis apply 는 PR 코멘트에서 끝나므로 머지 후 별도 액션 없음.
   stg/prd 는 `infra/envs/{stg,prd}/` 가 생성되면 `atlantis.yaml` 의 해당 프로젝트 블록 주석을 해제.

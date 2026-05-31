@@ -37,17 +37,23 @@ def test_env_has_required_files(env: str) -> None:
 
 
 def test_backend_keys_are_environment_separated() -> None:
-    """spec §2.1: backend tfstate keys must be unique per env to avoid state collision."""
+    """OSS: backend bucket/key are in partial config (backend.hcl, git-ignored).
+    The committed backend.hcl.example holds the per-env key — keys must be
+    unique per env to avoid state collision."""
     keys: dict[str, str] = {}
     for env in ENVS:
-        backend = (_env_path(env) / "backend.tf").read_text(encoding="utf-8")
-        match = re.search(r'key\s*=\s*"([^"]+)"', backend)
-        assert match, f'infra/envs/{env}/backend.tf has no `key = "..."` line'
+        example = _env_path(env) / "backend.hcl.example"
+        assert example.exists(), f"infra/envs/{env}/backend.hcl.example missing"
+        text = example.read_text(encoding="utf-8")
+        match = re.search(r'key\s*=\s*"([^"]+)"', text)
+        assert match, f'infra/envs/{env}/backend.hcl.example has no `key = "..."` line'
         keys[env] = match.group(1)
-    # All keys must be distinct.
+        # backend.tf must NOT hardcode bucket/key (OSS — partial config only).
+        backend_tf = (_env_path(env) / "backend.tf").read_text(encoding="utf-8")
+        assert not re.search(r"^\s*bucket\s*=", backend_tf, re.MULTILINE), (
+            f"infra/envs/{env}/backend.tf must not hardcode bucket (use partial config)"
+        )
     assert len(set(keys.values())) == len(keys), f"backend keys collide across envs: {keys!r}"
-    # Each key must include the env name (envs/<env> prefix; dev uses
-    # `envs/dev.tfstate` form, allow either flavor) — drift guard.
     for env, key in keys.items():
         assert f"envs/{env}" in key, f"env {env} backend key does not mention env: {key!r}"
 
