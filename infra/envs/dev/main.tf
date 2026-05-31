@@ -1,37 +1,34 @@
-# Bootstrap-purpose AWS provider — uses Atlantis IRSA directly (no
-# assume_role) to fetch the ExternalId secret needed by the main provider.
-# Avoids the chicken-and-egg of provider depending on its own data source.
+# Bootstrap-purpose AWS provider — fetches the ExternalId secret needed by the
+# main provider's AssumeRole, without depending on its own assume_role
+# (chicken-and-egg avoidance). Only used when a cross-account terraformer role
+# is configured (var.terraformer_role_arn / var.terraformer_external_id_secret).
 provider "aws" {
   alias  = "bootstrap"
   region = "ap-northeast-2"
 }
 
+# Read the AssumeRole ExternalId only when both the role and the secret id are
+# supplied. OSS / local runs leave these empty → no secret read, no assume_role.
 data "aws_secretsmanager_secret_version" "terraformer_external_id" {
+  count     = var.terraformer_role_arn != "" && var.terraformer_external_id_secret != "" ? 1 : 0
   provider  = aws.bootstrap
-  secret_id = "/demo-platform/external-ids/atomoh-main/terraformer"
+  secret_id = var.terraformer_external_id_secret
 }
 
 provider "aws" {
   region = "ap-northeast-2"
 
-  # Atlantis 실행 흐름:
-  #   Atlantis pod (IRSA: AtlantisIRSARole, account 180294183052)
-  #     → AssumeRole DemoPlatformTerraformer (with ExternalId from Secrets Manager)
-  #     → 리소스 생성/수정/삭제
-  #
-  # DemoPlatformTerraformer 는 callcenter Lambda/SFN/Bedrock/Glue/Firehose/Athena/S3/DDB/KMS/EventBridge/SQS 등
-  # 모든 리소스 권한을 보유한다 (AWS-Demo-Platform 의 accounts.yaml + IAM 모듈 관리).
-  # Trust policy 가 ExternalId condition 을 강제하므로, Secrets Manager 의
-  # `/demo-platform/external-ids/atomoh-main/terraformer` 에서 값을 가져와 전달한다.
-  #
-  # 로컬 dev 환경 (또는 GA OIDC 백업 호출) 에서는 var.terraformer_role_arn 을 빈 문자열로
-  # override 하면 assume_role 블록이 비활성화된다.
+  # CI/CD (e.g. Atlantis) AssumeRole flow:
+  #   runner identity → AssumeRole <terraformer_role_arn> (with ExternalId from
+  #   Secrets Manager) → manage resources.
+  # Account-specific values come from terraform.tfvars (git-ignored). Leaving
+  # var.terraformer_role_arn empty disables the assume_role block (local creds).
   dynamic "assume_role" {
     for_each = var.terraformer_role_arn != "" ? [1] : []
     content {
       role_arn     = var.terraformer_role_arn
-      external_id  = data.aws_secretsmanager_secret_version.terraformer_external_id.secret_string
-      session_name = "atlantis-callcenter-${var.env}"
+      external_id  = data.aws_secretsmanager_secret_version.terraformer_external_id[0].secret_string
+      session_name = "callcenter-${var.env}"
     }
   }
 
@@ -45,7 +42,7 @@ provider "aws" {
 }
 
 # ADR-013: us-east-1 provider for CloudFront ACM + WAF v2 (CLOUDFRONT scope).
-# Uses the same Atlantis AssumeRole chain as the primary region provider.
+# Same AssumeRole chain as the primary region provider.
 provider "aws" {
   alias  = "us_east_1"
   region = "us-east-1"
@@ -54,8 +51,8 @@ provider "aws" {
     for_each = var.terraformer_role_arn != "" ? [1] : []
     content {
       role_arn     = var.terraformer_role_arn
-      external_id  = data.aws_secretsmanager_secret_version.terraformer_external_id.secret_string
-      session_name = "atlantis-callcenter-${var.env}-use1"
+      external_id  = data.aws_secretsmanager_secret_version.terraformer_external_id[0].secret_string
+      session_name = "callcenter-${var.env}-use1"
     }
   }
 
@@ -149,4 +146,11 @@ module "hitl_ui" {
   kms_ddb_arn        = module.storage.kms_ddb_arn
   kms_masked_arn     = module.storage.kms_masked_arn
   kms_raw_arn        = module.storage.kms_raw_arn
+
+  # ACM / domain / image — account-specific, injected via terraform.tfvars.
+  # When empty, the HITL UI stays in skeleton state (no listener / ECS / CloudFront).
+  acm_certificate_arn           = var.hitl_acm_certificate_arn
+  acm_certificate_arn_us_east_1 = var.hitl_acm_certificate_arn_us_east_1
+  callback_domain               = var.hitl_callback_domain
+  image_tag                     = var.hitl_image_tag
 }

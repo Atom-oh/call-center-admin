@@ -1,0 +1,4 @@
+# Partial backend config for `terraform init -backend-config=backend.hcl`.
+# Copy to backend.hcl (git-ignored) and fill in your own S3 state bucket.
+bucket = "REPLACE-WITH-YOUR-TFSTATE-BUCKET"
+key    = "call-center-admin/envs/dev.tfstate"

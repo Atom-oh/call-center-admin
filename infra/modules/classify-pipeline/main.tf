@@ -457,7 +457,7 @@ locals {
   # SQS URL format: https://sqs.REGION.amazonaws.com/ACCOUNT/QUEUE_NAME
   # The previous `replace()` only stripped the prefix and left the `:`
   # between account and queue name, producing an invalid URL like
-  # `https://sqs.ap-northeast-2.amazonaws.com/180294183052:callcenter-dev-classify-dlq`
+  # `https://sqs.ap-northeast-2.amazonaws.com/<ACCOUNT_ID>:callcenter-dev-classify-dlq`
   # which SFN treats as a non-existent queue.
   classify_dlq_parts = split(":", var.classify_dlq_arn)
   classify_dlq_url   = "https://sqs.${local.classify_dlq_parts[3]}.amazonaws.com/${local.classify_dlq_parts[4]}/${local.classify_dlq_parts[5]}"

@@ -1,0 +1,8 @@
+# Copy to terraform.tfvars (git-ignored) and fill in account-specific values.
+terraformer_role_arn           = "arn:aws:iam::<ACCOUNT_ID>:role/<TERRAFORMER_ROLE>"
+terraformer_external_id_secret = "<secrets-manager-id-for-externalid>"
+
+hitl_acm_certificate_arn           = "arn:aws:acm:ap-northeast-2:<ACCOUNT_ID>:certificate/<id>"
+hitl_acm_certificate_arn_us_east_1 = "arn:aws:acm:us-east-1:<ACCOUNT_ID>:certificate/<id>"
+hitl_callback_domain               = "callcenter-prd-hitl.example.com"
+hitl_image_tag                     = "REPLACE_ME"

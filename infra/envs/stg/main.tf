@@ -6,9 +6,11 @@ provider "aws" {
   region = "ap-northeast-2"
 }
 
+# Read AssumeRole ExternalId only when role + secret id are supplied.
 data "aws_secretsmanager_secret_version" "terraformer_external_id" {
+  count     = var.terraformer_role_arn != "" && var.terraformer_external_id_secret != "" ? 1 : 0
   provider  = aws.bootstrap
-  secret_id = "/demo-platform/external-ids/atomoh-main/terraformer"
+  secret_id = var.terraformer_external_id_secret
 }
 
 provider "aws" {
@@ -18,8 +20,8 @@ provider "aws" {
     for_each = var.terraformer_role_arn != "" ? [1] : []
     content {
       role_arn     = var.terraformer_role_arn
-      external_id  = data.aws_secretsmanager_secret_version.terraformer_external_id.secret_string
-      session_name = "atlantis-callcenter-${var.env}"
+      external_id  = data.aws_secretsmanager_secret_version.terraformer_external_id[0].secret_string
+      session_name = "callcenter-${var.env}"
     }
   }
 
@@ -42,8 +44,8 @@ provider "aws" {
     for_each = var.terraformer_role_arn != "" ? [1] : []
     content {
       role_arn     = var.terraformer_role_arn
-      external_id  = data.aws_secretsmanager_secret_version.terraformer_external_id.secret_string
-      session_name = "atlantis-callcenter-${var.env}-use1"
+      external_id  = data.aws_secretsmanager_secret_version.terraformer_external_id[0].secret_string
+      session_name = "callcenter-${var.env}-use1"
     }
   }
 
@@ -130,9 +132,12 @@ module "hitl_ui" {
   kms_masked_arn     = module.storage.kms_masked_arn
   kms_raw_arn        = module.storage.kms_raw_arn
 
-  # ADR-012: stg 도 prd 와 동일한 5년 보존 — 운영 정책 일관성. dev 는
-  # 비용 절감을 위해 module default (365d) 유지.
+  # ADR-012: stg/prd audit log 5년 보존 (전자금융거래법 §22).
   audit_retention_days = 1827
 
-  # acm_certificate_arn / callback_domain / image_tag — 운영팀이 deploy 시점에 주입.
+  # ACM / domain / image — account-specific, injected via terraform.tfvars.
+  acm_certificate_arn           = var.hitl_acm_certificate_arn
+  acm_certificate_arn_us_east_1 = var.hitl_acm_certificate_arn_us_east_1
+  callback_domain               = var.hitl_callback_domain
+  image_tag                     = var.hitl_image_tag
 }
