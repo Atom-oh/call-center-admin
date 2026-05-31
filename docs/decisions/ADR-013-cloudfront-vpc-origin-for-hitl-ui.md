@@ -126,6 +126,24 @@ flowchart TD
 - 운영팀 onboarding friction ↑
 - 거부
 
+## Amendment (2026-05-31) — ALB listener 는 HTTPS 여야 함
+
+PR #24 dev apply 에서 발견: `authenticate-cognito` 액션은 **AWS 에서 HTTPS
+listener 에서만 지원**된다 (`InvalidLoadBalancerAction: Actions of type
+'authenticate-cognito' are supported only on HTTPS listeners`). 본 ADR 의 최초
+설계가 "ALB HTTP-only (TLS at CloudFront)" 였으나 authenticate-cognito 와 양립 불가.
+
+**정정된 설계**:
+- ALB listener = **HTTPS (port 443)** + authenticate-cognito, **ap-northeast-2 ACM cert** (`var.acm_certificate_arn`) gate
+- CloudFront VPC Origin → ALB 와 **HTTPS** 통신 (`origin_protocol_policy = "https-only"`)
+- CF↔ALB 구간은 VPC Origin 의 AWS internal link 라 인터넷 비노출 유지
+- ECS service + HTTPS listener 모두 `var.acm_certificate_arn` gate (target group 이 listener 와 연결돼야 ECS attach 가능)
+
+**인증서 2개 필요** (운영팀):
+1. `acm_certificate_arn_us_east_1` — CloudFront viewer (us-east-1)
+2. `acm_certificate_arn` — ALB HTTPS listener (ap-northeast-2)
+   둘 다 `callback_domain` 동일 FQDN 으로 발급 가능 (region 만 다름).
+
 ## Implementation Notes
 
 1차 AI 리뷰 (C1/M1/M2/M3) 반영:

@@ -24,8 +24,9 @@ output "ecs_cluster_name" {
 }
 
 output "ecs_service_name" {
-  value       = aws_ecs_service.hitl.name
-  description = "ECS service name — used for `aws ecs update-service --force-new-deployment`."
+  # ADR-013 정정: ECS service 는 acm_certificate_arn gate. cert 발급 전 "".
+  value       = length(aws_ecs_service.hitl) > 0 ? aws_ecs_service.hitl[0].name : ""
+  description = "ECS service name — empty until acm_certificate_arn (ap-northeast-2) is set."
 }
 
 # ADR-013: CloudFront distribution + domain (user-facing endpoint).
