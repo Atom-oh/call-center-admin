@@ -125,21 +125,26 @@ def test_alb_is_internal_not_public(main_tf: str) -> None:
     )
 
 
-def test_alb_listener_is_http_only_with_tls_at_cloudfront(main_tf: str) -> None:
-    """ADR-013 supersedes G10: TLS terminates at CloudFront, ALB receives HTTP
-    from the VPC Origin. There must be an HTTP listener and no HTTPS listener
-    holding an ACM cert directly."""
-    assert 'resource "aws_lb_listener" "http"' in main_tf
-    assert 'resource "aws_lb_listener" "https"' not in main_tf, (
-        "ALB must not terminate TLS — that is CloudFront's job (ADR-013)"
+def test_alb_listener_is_https_for_authenticate_cognito(main_tf: str) -> None:
+    """ADR-013 정정: authenticate-cognito 는 AWS 에서 HTTPS listener 전용.
+    따라서 ALB 는 HTTPS listener (ap-northeast-2 ACM cert) 를 사용하고,
+    TLS 1.3 SSL policy + CloudFront VPC Origin 이 HTTPS 로 통신한다.
+    HTTP listener (authenticate-cognito) 는 CreateListener 단계에서 거부됨.
+    """
+    assert 'resource "aws_lb_listener" "https"' in main_tf
+    assert 'resource "aws_lb_listener" "http"' not in main_tf, (
+        "ALB listener must be HTTPS — authenticate-cognito is HTTPS-only (AWS)"
     )
+    listener_block = main_tf.split('aws_lb_listener" "https"')[1].split('resource "aws_')[0]
+    assert 'protocol          = "HTTPS"' in listener_block or 'protocol = "HTTPS"' in listener_block
+    assert "ELBSecurityPolicy-TLS13" in listener_block, "HTTPS listener must use TLS 1.3 policy"
 
 
 def test_alb_listener_enforces_authenticate_cognito_before_forward(main_tf: str) -> None:
-    """C1 guard (2nd AI review): the HTTP listener must run authenticate-cognito
-    BEFORE forward. The default_action chain remains identical post-ADR-013.
+    """C1 guard (2nd AI review): the HTTPS listener must run authenticate-cognito
+    BEFORE forward. The default_action chain is identical post-ADR-013 정정.
     """
-    listener_block = main_tf.split('aws_lb_listener" "http"')[1].split('resource "aws_')[0]
+    listener_block = main_tf.split('aws_lb_listener" "https"')[1].split('resource "aws_')[0]
     assert "authenticate-cognito" in listener_block, (
         "default_action must include authenticate-cognito"
     )
@@ -151,6 +156,19 @@ def test_alb_listener_enforces_authenticate_cognito_before_forward(main_tf: str)
     if fwd_idx == -1:
         fwd_idx = listener_block.find('type = "forward"')
     assert auth_idx < fwd_idx, "authenticate-cognito must precede forward in default_action"
+
+
+def test_alb_https_listener_and_ecs_gated_on_acm(main_tf: str) -> None:
+    """ADR-013 정정: HTTPS listener + ECS service 는 ap-northeast-2 ACM cert
+    (var.acm_certificate_arn) gate. cert 미발급 시점에는 둘 다 미생성."""
+    https_block = main_tf.split('aws_lb_listener" "https"')[1].split("resource ")[0]
+    assert 'count             = var.acm_certificate_arn != ""' in https_block or (
+        'count = var.acm_certificate_arn != ""' in https_block
+    ), "HTTPS listener must be gated on var.acm_certificate_arn"
+    ecs_block = main_tf.split('aws_ecs_service" "hitl"')[1].split("resource ")[0]
+    assert 'var.acm_certificate_arn != ""' in ecs_block, (
+        "ECS service must be gated on var.acm_certificate_arn (TG needs listener association)"
+    )
 
 
 def test_alb_has_no_path_pattern_forward_rule(main_tf: str) -> None:
@@ -318,15 +336,16 @@ def test_cloudfront_uses_vpc_origin_resource(main_tf: str) -> None:
     )
 
 
-def test_cloudfront_vpc_origin_points_to_alb_with_http_only(main_tf: str) -> None:
-    """ADR-013: VPC Origin endpoint targets the ALB ARN with HTTP-only protocol
-    (TLS terminates at CF edge)."""
+def test_cloudfront_vpc_origin_points_to_alb_with_https(main_tf: str) -> None:
+    """ADR-013 정정: VPC Origin endpoint 가 ALB ARN 을 HTTPS 로 통신.
+    ALB listener 가 authenticate-cognito 때문에 HTTPS 여야 하므로 VPC Origin 도
+    https-only."""
     vpc_origin_block = main_tf.split('aws_cloudfront_vpc_origin" "hitl"')[1].split(
         'resource "aws_'
     )[0]
     assert "aws_lb.hitl.arn" in vpc_origin_block, "VPC Origin must target the ALB ARN"
-    assert 'origin_protocol_policy = "http-only"' in vpc_origin_block, (
-        "CF → ALB must be HTTP-only (TLS at CF edge per ADR-013)"
+    assert 'origin_protocol_policy = "https-only"' in vpc_origin_block, (
+        "CF → ALB must be HTTPS (ALB authenticate-cognito requires HTTPS listener)"
     )
 
 

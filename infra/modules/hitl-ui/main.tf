@@ -169,8 +169,6 @@ resource "aws_lb" "hitl" {
 }
 
 resource "aws_lb_target_group" "hitl" {
-  # ADR-013: target group is created unconditionally now — listener attaches it
-  # immediately via HTTP, and CloudFront becomes the public entry point.
   name        = "callcenter-${var.env}-hitl-tg"
   port        = 8501
   protocol    = "HTTP"
@@ -186,14 +184,21 @@ resource "aws_lb_target_group" "hitl" {
   }
 }
 
-# ADR-013: HTTP listener — TLS is terminated at CloudFront, ALB receives
-# already-decrypted traffic via the VPC Origin (AWS internal link). The
-# authenticate-cognito + forward chain stays identical (C1 guard from 2nd AI
-# review).
-resource "aws_lb_listener" "http" {
+# ADR-013 정정 (PR #24 apply 실패): `authenticate-cognito` 액션은 AWS 에서
+# HTTPS listener 에서만 지원된다. 따라서 ALB 는 HTTP-only 가 될 수 없고,
+# ap-northeast-2 ACM cert 를 가진 HTTPS listener 가 필요하다. CloudFront
+# VPC Origin 은 ALB 와 HTTPS 로 통신 (origin_protocol_policy=https-only).
+#
+# listener 는 ACM cert 주입 후에만 생성 (gate). cert 미발급 시점에는 ALB +
+# SG + target group 까지만 stand-up. C1 guard (authenticate-cognito order=1
+# → forward order=2) 유지.
+resource "aws_lb_listener" "https" {
+  count             = var.acm_certificate_arn != "" ? 1 : 0
   load_balancer_arn = aws_lb.hitl.arn
-  port              = 80
-  protocol          = "HTTP"
+  port              = 443
+  protocol          = "HTTPS"
+  certificate_arn   = var.acm_certificate_arn
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
 
   default_action {
     order = 1
@@ -286,11 +291,13 @@ resource "aws_cloudfront_vpc_origin" "hitl" {
   count = var.acm_certificate_arn_us_east_1 != "" ? 1 : 0
 
   vpc_origin_endpoint_config {
-    name                   = "callcenter-${var.env}-hitl-vpc-origin"
-    arn                    = aws_lb.hitl.arn
+    name = "callcenter-${var.env}-hitl-vpc-origin"
+    arn  = aws_lb.hitl.arn
+    # ADR-013 정정: ALB listener 가 HTTPS (authenticate-cognito 제약) 이므로
+    # VPC Origin 도 ALB 와 HTTPS 로 통신.
     http_port              = 80
     https_port             = 443
-    origin_protocol_policy = "http-only"
+    origin_protocol_policy = "https-only"
 
     origin_ssl_protocols {
       items    = ["TLSv1.2"]
@@ -510,9 +517,11 @@ resource "aws_ecs_task_definition" "hitl" {
 }
 
 resource "aws_ecs_service" "hitl" {
-  # ADR-013: TG + HTTP listener are now created unconditionally, so the ECS
-  # service can stand up alongside them. CloudFront (gated on us-east-1 ACM)
-  # is the only piece that waits for the cert.
+  # ADR-013 정정: ECS service 의 load_balancer 블록은 target group 이 LB 와
+  # 연결(listener)되어 있어야 attach 가능. listener 가 ACM cert gate 이므로
+  # ECS service 도 동일 gate. cert 미발급 시점에는 cluster / task_definition /
+  # IAM / log group / ECR / Cognito 까지만 stand-up.
+  count           = var.acm_certificate_arn != "" ? 1 : 0
   name            = "callcenter-${var.env}-hitl"
   cluster         = aws_ecs_cluster.main.id
   task_definition = aws_ecs_task_definition.hitl.arn
@@ -530,4 +539,6 @@ resource "aws_ecs_service" "hitl" {
     container_name   = "streamlit"
     container_port   = 8501
   }
+
+  depends_on = [aws_lb_listener.https]
 }
