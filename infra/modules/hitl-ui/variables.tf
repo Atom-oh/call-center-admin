@@ -43,8 +43,16 @@ variable "kms_raw_arn" {
   description = "KMS CMK for S3 stt-raw — required for compliance presigned URL decrypt."
 }
 
-# ADR-013: CloudFront + VPC Origin. ACM cert lives in us-east-1 (CloudFront
-# requirement). ALB itself runs HTTP-only — TLS is terminated at CloudFront.
+# ADR-013 정정: ALB authenticate-cognito 는 HTTPS listener 전용이라 ALB 에
+# ap-northeast-2 ACM cert 가 필요. CloudFront VPC Origin 이 ALB 와 HTTPS 통신.
+# 빈 값이면 ALB listener + ECS service 가 gate off (cert 발급 전 skeleton 상태).
+variable "acm_certificate_arn" {
+  type        = string
+  default     = ""
+  description = "ACM ARN in the ALB region (ap-northeast-2) for the HTTPS listener (authenticate-cognito). Empty → no listener / ECS service."
+}
+
+# ADR-013: CloudFront viewer cert lives in us-east-1 (CloudFront requirement).
 # Default empty so the CF distribution is gated off until the cert is issued.
 variable "acm_certificate_arn_us_east_1" {
   type        = string
