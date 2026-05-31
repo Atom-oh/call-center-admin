@@ -19,6 +19,7 @@ Phase 1 (콜센터 STT 자동 분류 시스템) 의 10 개 ADR. 각 ADR 은 의�
 | [ADR-011](ADR-011-hitl-ui-streamlit-on-fargate.md) | HITL UI = Streamlit on Fargate + ALB authenticate-cognito | Accepted | UI / Fargate / Cognito |
 | [ADR-012](ADR-012-audit-log-retention-5-years.md) | HITL 감사 로그 5년 보존 (전자금융거래법 §22) | Accepted | 컴플라이언스 / 비용 |
 | [ADR-013](ADR-013-cloudfront-vpc-origin-for-hitl-ui.md) | CloudFront + VPC Origin (HITL UI fronting) | Accepted | 네트워크 / 인증서 |
+| [ADR-014](ADR-014-opus-4-7-temperature-removal.md) | Opus 4.7 temperature 제거 — 결정성 담보 전략 | Accepted | Bedrock / 재현성 |
 
 ## 작성 규칙
 
