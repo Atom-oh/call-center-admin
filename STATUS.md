@@ -1,10 +1,24 @@
-# Phase 1 자율 실행 결과 — 완료 (PR1~PR10 + 후속 PR14/15/16)
+# Phase 1 자율 실행 결과 — 완료 (PR1~PR10 + 후속 PR14~23)
 
 **Phase 1 완료**: 2026-05-28
-**현재 HEAD**: `fcb9c62` (PR #16 머지) — origin/main, GitHub: `Atom-oh/call-center-admin`
-**테스트 현황**: 114 passed, 0 failed
+**현재 HEAD**: `70805d9` (PR #20 머지) — origin/main, GitHub: `Atom-oh/call-center-admin`
+**테스트 현황**: 127 passed, 0 failed
 **Terraform 현황**: dev / stg / prd 모두 `fmt -recursive` clean + `validate` Success
-**ADR**: 12개 (모두 Mermaid 다이어그램 포함) — `docs/decisions/README.md`
+**ADR**: 14개 (모두 Mermaid 다이어그램 포함) — `docs/decisions/README.md`
+
+## ⚠️ dev apply drift 복구 (2026-05-31)
+
+머지됐으나 `atlantis apply` 가 누락된 채 main 에 들어간 PR 3건 — main 코드와
+dev 실제 인프라가 drift. 본 PR 의 `atlantis apply -p dev` 로 일괄 반영.
+
+| PR | 변경 | 미apply 영향 |
+|----|------|-------------|
+| #21 | CloudFront + VPC Origin (ADR-013) | ALB 가 구버전 HTTPS listener, CloudFront/WAF/VPC Origin 미생성 |
+| #16 | atlantis stg/prd + hitl_ui wiring | dev hitl_ui module 일부 미반영 |
+| #20 | bedrock temperature 제거 (ADR-014) | classify Lambda 가 temperature=0.0 → 실호출 시 ValidationException |
+
+**재발 방지**: PR 머지 전 `atlantis apply` 가 status check 로 강제되도록
+branch protection 에 `atlantis/apply` required 추가 검토 (별도 작업).
 
 ## Phase 1 머지 이력
 
