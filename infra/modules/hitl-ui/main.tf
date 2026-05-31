@@ -118,9 +118,13 @@ resource "aws_security_group" "alb" {
   vpc_id      = var.vpc_id
 
   ingress {
-    description = "HTTP from CloudFront VPC Origin (ADR-013, internal AWS link)"
-    from_port   = 80
-    to_port     = 80
+    # ADR-013 정정: ALB listener 가 HTTPS(443) 이므로 SG 도 443 을 열어야 한다.
+    # 80 만 열면 CloudFront VPC Origin (https-only) → ALB 도달이 런타임에 깨짐
+    # (apply 는 성공하므로 silent breakage). VPC Origin 은 AWS internal link 라
+    # source 는 VPC CIDR.
+    description = "HTTPS from CloudFront VPC Origin (ADR-013, internal AWS link)"
+    from_port   = 443
+    to_port     = 443
     protocol    = "tcp"
     cidr_blocks = [data.aws_vpc.this.cidr_block]
   }

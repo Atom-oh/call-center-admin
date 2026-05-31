@@ -125,6 +125,22 @@ def test_alb_is_internal_not_public(main_tf: str) -> None:
     )
 
 
+def test_alb_sg_ingress_matches_https_listener_port(main_tf: str) -> None:
+    """AI 리뷰 MAJOR (PR #24 3rd): ALB listener 가 HTTPS(443) 이므로 SG ingress 도
+    443 을 열어야 한다. 80 만 열면 CloudFront VPC Origin (https-only) → ALB 도달이
+    런타임에 깨짐 (apply 는 성공하는 silent breakage)."""
+    sg_alb_block = main_tf.split('aws_security_group" "alb"')[1].split('resource "aws_')[0]
+    ingress = sg_alb_block.split("ingress {")[1].split("egress {")[0]
+    import re
+
+    assert re.search(r"from_port\s*=\s*443\b", ingress), (
+        "ALB SG ingress must open 443 (matches HTTPS listener)"
+    )
+    assert not re.search(r"from_port\s*=\s*80\b", ingress), (
+        "ALB SG must not open 80 — listener is HTTPS 443"
+    )
+
+
 def test_alb_listener_is_https_for_authenticate_cognito(main_tf: str) -> None:
     """ADR-013 정정: authenticate-cognito 는 AWS 에서 HTTPS listener 전용.
     따라서 ALB 는 HTTPS listener (ap-northeast-2 ACM cert) 를 사용하고,
