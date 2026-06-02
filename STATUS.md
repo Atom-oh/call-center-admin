@@ -2,7 +2,7 @@
 
 **Phase 1 완료**: 2026-05-28
 **현재 HEAD**: `70805d9` (PR #20 머지) — origin/main, GitHub: `Atom-oh/call-center-admin`
-**테스트 현황**: 127 passed, 0 failed
+**테스트 현황**: 155 passed, 0 failed (ADR 후속 작업으로 +28: cache_warmer 14, eval variance 7, HITL lock 4, 기타)
 **Terraform 현황**: dev / stg / prd 모두 `fmt -recursive` clean + `validate` Success
 **ADR**: 14개 (모두 Mermaid 다이어그램 포함) — `docs/decisions/README.md`
 
@@ -32,10 +32,10 @@ branch protection 에 `atlantis/apply` required 추가 검토 (별도 작업).
 | #15 | feat(stg-prd-runbooks): stg/prd env + 4종 런북 + e2e smoke | 2026-05-28 |
 | #16 | chore(infra): atlantis stg/prd projects + hitl_ui wiring + drift guards + ADR-012 (5년 retention) | 2026-05-28 |
 
-## ADR 인벤토리 (12개)
+## ADR 인벤토리 (14개)
 
 1. Pluggable InferenceAdapter Protocol
-2. Two-breakpoint prompt cache
+2. Two-breakpoint prompt cache *(워밍 핑 구현 완료 — OPTIONAL/default-off)*
 3. Three-layer PII guard
 4. xlsx 코드 식별자(NONEY/PAYNENT) 보존
 5. per-Lambda staging-dir packaging
@@ -44,8 +44,23 @@ branch protection 에 `atlantis/apply` required 추가 검토 (별도 작업).
 8. 한국어 DDB 속성명 + ASCII GSI index
 9. Atlantis 로 Terraform 처리
 10. global Bedrock CRIS
-11. HITL UI = Streamlit on Fargate (ALB authenticate-cognito)
+11. HITL UI = Streamlit on Fargate (ALB authenticate-cognito) *(낙관적 락 구현 완료)*
 12. HITL 감사 로그 5년 보존 (전자금융거래법 §22)
+13. CloudFront + VPC Origin (HITL UI fronting)
+14. Opus 4.7 temperature 제거 — 결정성 담보 *(변동성 측정 하니스 구현 완료)*
+
+### ADR 후속 작업 (2026-06-02, `feat/adr-followup-completion`)
+
+ADR 본문에 "미구현 / 검토 예정 / 미해결" 로 남아 있던 항목 중 **외부 의존이 없는 4건을 코드로 종결**:
+
+| ADR | 후속 작업 | 산출물 |
+|-----|----------|--------|
+| 002 | 프롬프트 캐시 워밍 핑 (default-OFF) | `src/lambdas/cache_warmer/` + `BedrockAdapter.warm()` + count-gated Terraform + 14 test |
+| 011 | HITL 동시 검수 낙관적 락 (first-write-wins) | `AlreadyProcessedError` + `ConditionExpression` + 4 test |
+| 012 | 5년 보존 자동화 테스트 참조 정정 | doc (기존 `test_audit_retention_5y_in_stg_prd` 참조) |
+| 014 | temperature 제거 후 변동성 측정 하니스 | `eval_prompt.py --runs N` + `variance-report.csv` + 7 test |
+
+**의도적 deferred (외부 의존)**: ADR-001 (HITL 500+ 라벨 누적 후 ML adapter), ADR-003 (운영 PII 누설률 데이터 + GPU), ADR-004 (운영팀 코드 변경 합의), ADR-005 (선택적 Lambda Layer 정리), ADR-006 (KMS rotation 이미 활성), ADR-010 (Anthropic 콘솔 외부 트리거).
 
 ## 운영팀 진행 사항
 

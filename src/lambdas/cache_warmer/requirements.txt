@@ -1,0 +1,1 @@
+# Lambda 런타임이 boto3 제공 — 의존성 없음. (do NOT pin boto3)

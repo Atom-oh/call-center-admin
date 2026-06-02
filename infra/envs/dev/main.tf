@@ -101,6 +101,10 @@ module "classify_pipeline" {
   persist_dlq_arn    = module.storage.persist_dlq_arn
   firehose_name      = module.analytics.firehose_name
   firehose_arn       = module.analytics.firehose_arn
+
+  # ADR-002 cache-warming — OPTIONAL, default OFF (see terraform.tfvars.example).
+  enable_cache_warming   = var.enable_cache_warming
+  cache_warming_schedule = var.cache_warming_schedule
 }
 
 # Slack webhook 은 ADR-009 에 따라 Secrets Manager 에 사전 등록되어 있다고

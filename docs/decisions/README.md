@@ -1,6 +1,6 @@
 # Architecture Decision Records
 
-Phase 1 (콜센터 STT 자동 분류 시스템) 의 10 개 ADR. 각 ADR 은 의무적으로 Mermaid 아키텍처 흐름 다이어그램을 포함한다 (프로젝트 규칙).
+Phase 1 (콜센터 STT 자동 분류 시스템) 의 14 개 ADR. 각 ADR 은 의무적으로 Mermaid 아키텍처 흐름 다이어그램을 포함한다 (프로젝트 규칙).
 
 ## Index
 

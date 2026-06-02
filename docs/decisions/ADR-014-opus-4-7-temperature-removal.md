@@ -113,7 +113,7 @@ flowchart TD
 - `BedrockAdapter.__init__` 의 `max_tokens` 파라미터는 유지 (출력 길이 제어)
 - **회귀 가드**: `tests/unit/test_bedrock_client.py::test_inference_config_has_no_temperature` — `converse` call_args 의 `inferenceConfig` 에 `temperature` key 가 없음을 assert. 미래에 무심코 되돌리는 것 차단.
 - 두 CLAUDE.md 동기화: `src/lib/CLAUDE.md`, `src/lambdas/classify/CLAUDE.md` (Auto-Sync Rule 준수)
-- 골든셋 baseline: 운영팀이 동일 입력 N=5 회 호출하여 변동성 측정 후 `tests/golden/eval-history.csv` baseline 갱신 여부 결정 (별도 작업)
+- 골든셋 baseline: 변동성 측정 하니스를 `scripts/eval_prompt.py --runs N` 으로 제공 (per-row (대,중,소) 라벨 안정성 → `tests/golden/variance-report.csv`). 운영팀이 dev apply 후 `python scripts/eval_prompt.py --runs 5 --skip-tbd` 실호출하여 변동성 측정, unstable row 발견 시 baseline 갱신 / verify 임계값 재검토. 하니스 단위 테스트: `tests/unit/test_eval_prompt.py` (mock adapter, 7 케이스 — 실 Bedrock 불필요).
 
 ## References
 

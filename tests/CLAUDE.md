@@ -52,6 +52,7 @@ tests/
 - 5행 scaffold 상태. real label은 g001만.
 - 손 라벨링 50~100건 누적은 W2 deferred (분석팀 또는 외주 책임).
 - `python scripts/eval_prompt.py --skip-tbd` 가 TBD 행을 자동 스킵.
+- `python scripts/eval_prompt.py --runs 5` → per-row (대/중/소) 라벨 안정성 측정, `tests/golden/variance-report.csv` 산출 (ADR-014 temperature 제거 후 변동성 검증). 하니스 로직 단위 테스트는 `tests/unit/test_eval_prompt.py`.
 - CI에서 매 PR마다 자동 평가 + 회귀 -2%p시 fail (PR10에서 GitHub Actions 추가).
 
 ### TDD 원칙

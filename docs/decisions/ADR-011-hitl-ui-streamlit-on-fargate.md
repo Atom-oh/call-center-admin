@@ -96,7 +96,7 @@ flowchart TD
 - emit_audit 모듈이 PR9 observability dashboard 와 자연스럽게 통합 가능 (별도 메트릭 추가 trivial)
 
 ### Negative
-- Streamlit 의 multi-user 동시 작업 시 lock 부재 — `update_correction` 의 마지막 write wins. 동시 작업 흔치 않다 가정. Phase 2 에서 DDB ConditionExpression 추가 검토.
+- ~~Streamlit 의 multi-user 동시 작업 시 lock 부재~~ → **해결됨**: `update_correction` / `update_skip` 가 `ConditionExpression="#s = :pending"` (status=hitl-pending 조건) 로 first-write-wins optimistic lock 적용. 두 번째 reviewer 는 `AlreadyProcessedError` 를 받고 Streamlit 이 "이미 다른 검수자가 처리한 통화" 로 안내 + 목록 새로고침 (clobber / crash 없음). 회귀 가드: `tests/unit/test_hitl_ddb_access.py::test_second_writer_loses_after_first_correction`.
 - Streamlit rerun on button — soft polling pattern 으로 인한 DDB read 비용 증가 가능 (per-user 5-10 query / 분 추정).
 - 컨테이너 이미지 빌드 / push 가 Lambda 패키징보다 무거움. PR10 CI/CD 에서 SHA-pinned image_tag 변수로 IMMUTABLE 보장 (ADR-005 와 다른 패턴 — Lambda staging-dir 미사용).
 - ALB authenticate-cognito 의 JWT 가 ES256. `_verify_signature` 가 ALB region public key fetch — 첫 호출 latency ↑ (10s 정도 cache 후 해소).

@@ -255,3 +255,78 @@ def test_update_skip_writes_skipped_status(ddb_table) -> None:
     assert after["status"] == "hitl-skipped"
     # Codes are unchanged.
     assert after["category_대code"] == original_da
+
+
+# ──────────────────────────────────────────────────────────────────────────
+# ADR-011 — first-write-wins optimistic lock (multi-user)
+# ──────────────────────────────────────────────────────────────────────────
+
+
+def test_update_correction_rejects_already_processed(ddb_table) -> None:
+    """ADR-011: correction must be conditional on status=hitl-pending. A row
+    already in a terminal state (confirmed) must be rejected, not clobbered."""
+    import pytest
+    from hitl_lib.ddb_access import AlreadyProcessedError, get_call, update_correction
+
+    # call_other_001 is fixture-seeded as status="confirmed" (NOT hitl-pending).
+    with pytest.raises(AlreadyProcessedError):
+        update_correction(
+            "call_other_001",
+            {"대code": "X1", "중code": "X2", "소code": "X3"},
+            corrected_by="ops@example.com",
+        )
+    after = get_call("call_other_001")
+    assert after is not None
+    assert after["status"] == "confirmed", "rejected write must not clobber the row"
+    assert after["category_중code"] == "M2", "codes must be untouched after rejected lock"
+
+
+def test_update_skip_rejects_already_processed(ddb_table) -> None:
+    """ADR-011: skip is conditional on status=hitl-pending too."""
+    import pytest
+    from hitl_lib.ddb_access import AlreadyProcessedError, get_call, update_skip
+
+    with pytest.raises(AlreadyProcessedError):
+        update_skip("call_other_001", by="ops@example.com")
+    after = get_call("call_other_001")
+    assert after is not None
+    assert after["status"] == "confirmed"
+
+
+def test_second_writer_loses_after_first_correction(ddb_table) -> None:
+    """ADR-011 core bug: two reviewers race. First write wins (row → corrected);
+    the second write sees status != hitl-pending → AlreadyProcessedError, and the
+    first reviewer's codes survive (no last-write-wins clobber)."""
+    import pytest
+    from hitl_lib.ddb_access import AlreadyProcessedError, get_call, update_correction
+
+    # Reviewer A corrects first.
+    update_correction(
+        "call_pending_001",
+        {"대code": "A1", "중code": "A2", "소code": "A3"},
+        corrected_by="reviewer_a@example.com",
+    )
+    # Reviewer B (stale Streamlit view) submits a different correction.
+    with pytest.raises(AlreadyProcessedError):
+        update_correction(
+            "call_pending_001",
+            {"대code": "B1", "중code": "B2", "소code": "B3"},
+            corrected_by="reviewer_b@example.com",
+        )
+    after = get_call("call_pending_001")
+    assert after is not None
+    assert after["category_대code"] == "A1", "first writer's codes must win"
+    assert after["correctedBy"] == "reviewer_a@example.com"
+
+
+def test_rejected_lock_emits_no_audit(ddb_table, capsys) -> None:
+    """ADR-011 + M3 audit: a rejected (lock-lost) write must NOT emit an audit
+    record — the trail records only effective changes."""
+    import pytest
+    from hitl_lib.ddb_access import AlreadyProcessedError, update_skip
+
+    capsys.readouterr()  # clear
+    with pytest.raises(AlreadyProcessedError):
+        update_skip("call_other_001", by="ops@example.com")
+    out = capsys.readouterr().out
+    assert "hitl.skip" not in out, "rejected write must not emit an audit record"
