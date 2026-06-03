@@ -676,9 +676,11 @@ resource "aws_cloudwatch_event_target" "to_sfn" {
 # (lib.bedrock_client.warm()) so it warms the exact cache classify reads.
 # ==========================================================================
 
-# stage + zip are data sources (create nothing in AWS) so they stay unconditional
-# and cheap; only the aws_* resources below are gated.
+# stage + zip are ALSO count-gated on the same var so a default-OFF environment
+# does zero build I/O (no rm -rf / cp -R) on every plan. When enabled, both have
+# index [0] alongside the aws_lambda_function below.
 data "external" "cache_warmer_stage" {
+  count = var.enable_cache_warming ? 1 : 0
   program = ["bash", "-c", <<-EOT
     set -e
     STAGE_DIR=${path.module}/build/cache_warmer
@@ -696,8 +698,9 @@ data "external" "cache_warmer_stage" {
 }
 
 data "archive_file" "cache_warmer" {
+  count       = var.enable_cache_warming ? 1 : 0
   type        = "zip"
-  source_dir  = data.external.cache_warmer_stage.result.staged
+  source_dir  = data.external.cache_warmer_stage[0].result.staged
   output_path = "${path.module}/build/cache_warmer.zip"
 }
 
@@ -751,8 +754,8 @@ resource "aws_lambda_function" "cache_warmer" {
   role             = aws_iam_role.cache_warmer[0].arn
   handler          = "lambdas.cache_warmer.handler.handler"
   runtime          = "python3.12"
-  filename         = data.archive_file.cache_warmer.output_path
-  source_code_hash = data.archive_file.cache_warmer.output_base64sha256
+  filename         = data.archive_file.cache_warmer[0].output_path
+  source_code_hash = data.archive_file.cache_warmer[0].output_base64sha256
   timeout          = 60
   memory_size      = 512
 

@@ -51,11 +51,7 @@ def test_enable_flag_defaults_off(variables_tf: str) -> None:
 
 
 def test_all_aws_resources_count_gated(main_tf: str) -> None:
-    """ADR-002: 모든 aws_* cache-warmer 리소스가 count = var.enable_cache_warming ? 1 : 0.
-
-    data.external / data.archive_file 은 AWS 리소스를 만들지 않으므로 (zip 빌드만)
-    gate 대상이 아니다 — aws_ 로 시작하는 cache_warmer/cache_warm 리소스만 검사.
-    """
+    """ADR-002: 모든 aws_* cache-warmer 리소스가 count = var.enable_cache_warming ? 1 : 0."""
     # cache-warmer 섹션만 추출 (ADR-002 주석 마커 이후)
     section = main_tf[main_tf.index("ADR-002: OPTIONAL cache-warming") :]
     aws_blocks = re.findall(r'resource "(aws_[\w]+)" "(cache_warm\w*)" \{', section)
@@ -67,6 +63,26 @@ def test_all_aws_resources_count_gated(main_tf: str) -> None:
         assert "count" in body and "var.enable_cache_warming ? 1 : 0" in body, (
             f"{_type}.{name} not count-gated on enable_cache_warming"
         )
+
+
+def test_data_sources_also_count_gated(main_tf: str) -> None:
+    """ADR-002: stage/zip data 소스도 동일 var 로 gate → default-OFF 시 build I/O 0.
+
+    data.external.cache_warmer_stage / data.archive_file.cache_warmer 가 count-gated
+    되어야 비활성 환경의 매 plan 마다 rm -rf / cp -R 가 돌지 않는다. 동시에 lambda
+    가 data.archive_file.cache_warmer[0] 로 참조 (index 정합).
+    """
+    section = main_tf[main_tf.index("ADR-002: OPTIONAL cache-warming") :]
+    for ds in ('data "external" "cache_warmer_stage"', 'data "archive_file" "cache_warmer"'):
+        start = section.index(ds)
+        body = section[start : start + 300]
+        assert "count" in body and "var.enable_cache_warming ? 1 : 0" in body, (
+            f"{ds} not count-gated"
+        )
+    # gated data source 참조는 반드시 [0] 인덱싱
+    assert "data.external.cache_warmer_stage[0].result.staged" in section
+    assert "data.archive_file.cache_warmer[0].output_path" in section
+    assert "data.archive_file.cache_warmer[0].output_base64sha256" in section
 
 
 def test_expected_resource_set(main_tf: str) -> None:
