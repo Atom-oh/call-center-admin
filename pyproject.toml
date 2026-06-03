@@ -14,7 +14,11 @@ dev = [
   "pytest>=8.3.0",
   "pytest-cov>=5.0.0",
   "moto[all]>=5.0.0",
-  "ruff>=0.6.0",
+  # ruff 는 formatter 재현성을 위해 정확히 핀한다. 범위 핀(`>=`)은 patch 릴리스마다
+  # `ruff format` 출력이 달라져(예: 0.15.14 ↔ 0.15.15 의 list 래핑 차이) 로컬 통과
+  # 하지만 CI `ruff format --check` 가 실패하는 드리프트를 유발했다(PR #26 사례).
+  # 버전 상향 시 이 한 줄을 올리고 `ruff format` 재실행 → 동일 diff 를 커밋.
+  "ruff==0.15.15",
   "mypy>=1.11.0",
   "boto3-stubs[bedrock-runtime,dynamodb,s3,sagemaker]>=1.35.0",
   "types-openpyxl>=3.1",
