@@ -38,7 +38,12 @@ def test_warm_uses_same_system_blocks_as_classify(monkeypatch) -> None:
     sent_system = fake.converse.call_args.kwargs["system"]
     assert sent_system == warm_system
     # 2-breakpoint: text, cachePoint, text, cachePoint
-    assert [next(iter(b.keys())) for b in sent_system] == ["text", "cachePoint", "text", "cachePoint"]
+    assert [next(iter(b.keys())) for b in sent_system] == [
+        "text",
+        "cachePoint",
+        "text",
+        "cachePoint",
+    ]
 
 
 def test_warm_no_temperature(monkeypatch) -> None:
