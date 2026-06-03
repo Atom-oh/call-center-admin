@@ -667,3 +667,125 @@ resource "aws_cloudwatch_event_target" "to_sfn" {
     input_template = "{\"rawBucket\":<bucket>,\"rawKey\":<key>}"
   }
 }
+
+# ==========================================================================
+# ADR-002: OPTIONAL cache-warming (EventBridge cron + warmer Lambda).
+# Every AWS resource is count-gated on var.enable_cache_warming (default false)
+# → zero resources / zero recurring Bedrock cost unless explicitly enabled.
+# The warmer reuses the SAME 2-breakpoint system blocks + MODEL_ID as classify
+# (lib.bedrock_client.warm()) so it warms the exact cache classify reads.
+# ==========================================================================
+
+# stage + zip are ALSO count-gated on the same var so a default-OFF environment
+# does zero build I/O (no rm -rf / cp -R) on every plan. When enabled, both have
+# index [0] alongside the aws_lambda_function below.
+data "external" "cache_warmer_stage" {
+  count = var.enable_cache_warming ? 1 : 0
+  program = ["bash", "-c", <<-EOT
+    set -e
+    STAGE_DIR=${path.module}/build/cache_warmer
+    SRC_DIR=${path.module}/../../../src
+    rm -rf "$STAGE_DIR"
+    mkdir -p "$STAGE_DIR"
+    cp -R "$SRC_DIR/lib" "$STAGE_DIR/"
+    cp -R "$SRC_DIR/prompts" "$STAGE_DIR/"
+    mkdir -p "$STAGE_DIR/lambdas"
+    cp -R "$SRC_DIR/lambdas/cache_warmer" "$STAGE_DIR/lambdas/"
+    find "$STAGE_DIR" -type d -name __pycache__ -exec rm -rf {} + || true
+    echo "{\"staged\":\"$STAGE_DIR\"}"
+  EOT
+  ]
+}
+
+data "archive_file" "cache_warmer" {
+  count       = var.enable_cache_warming ? 1 : 0
+  type        = "zip"
+  source_dir  = data.external.cache_warmer_stage[0].result.staged
+  output_path = "${path.module}/build/cache_warmer.zip"
+}
+
+resource "aws_iam_role" "cache_warmer" {
+  count = var.enable_cache_warming ? 1 : 0
+  name  = "callcenter-${var.env}-cache-warmer"
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect    = "Allow"
+      Principal = { Service = "lambda.amazonaws.com" }
+      Action    = "sts:AssumeRole"
+    }]
+  })
+}
+
+resource "aws_iam_role_policy" "cache_warmer" {
+  count = var.enable_cache_warming ? 1 : 0
+  role  = aws_iam_role.cache_warmer[0].id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        # Same opus inference-profile + foundation-model ARNs as classify (ADR-010).
+        # NO kms/s3/dynamodb (ADR-006 least-privilege — warmer only pings Bedrock).
+        Effect = "Allow"
+        Action = ["bedrock:InvokeModel"]
+        Resource = [
+          "arn:aws:bedrock:ap-northeast-2:${data.aws_caller_identity.current.account_id}:inference-profile/global.anthropic.claude-opus-4-7",
+          "arn:aws:bedrock:*::foundation-model/anthropic.claude-opus-4-*"
+        ]
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["logs:CreateLogStream", "logs:PutLogEvents"]
+        Resource = "${aws_cloudwatch_log_group.cache_warmer[0].arn}:*"
+      },
+    ]
+  })
+}
+
+resource "aws_cloudwatch_log_group" "cache_warmer" {
+  count             = var.enable_cache_warming ? 1 : 0
+  name              = "/aws/lambda/callcenter-${var.env}-cache-warmer"
+  retention_in_days = 30
+}
+
+resource "aws_lambda_function" "cache_warmer" {
+  count            = var.enable_cache_warming ? 1 : 0
+  function_name    = "callcenter-${var.env}-cache-warmer"
+  role             = aws_iam_role.cache_warmer[0].arn
+  handler          = "lambdas.cache_warmer.handler.handler"
+  runtime          = "python3.12"
+  filename         = data.archive_file.cache_warmer[0].output_path
+  source_code_hash = data.archive_file.cache_warmer[0].output_base64sha256
+  timeout          = 60
+  memory_size      = 512
+
+  environment {
+    variables = {
+      MODEL_ID   = "global.anthropic.claude-opus-4-7"
+      PROMPT_DIR = "/var/task/prompts/v1.0"
+    }
+  }
+
+  depends_on = [aws_cloudwatch_log_group.cache_warmer]
+}
+
+resource "aws_cloudwatch_event_rule" "cache_warm" {
+  count               = var.enable_cache_warming ? 1 : 0
+  name                = "callcenter-${var.env}-cache-warm"
+  schedule_expression = var.cache_warming_schedule
+}
+
+resource "aws_cloudwatch_event_target" "cache_warm" {
+  count = var.enable_cache_warming ? 1 : 0
+  rule  = aws_cloudwatch_event_rule.cache_warm[0].name
+  arn   = aws_lambda_function.cache_warmer[0].arn
+}
+
+resource "aws_lambda_permission" "cache_warm_events" {
+  count         = var.enable_cache_warming ? 1 : 0
+  statement_id  = "AllowEventBridgeInvokeCacheWarmer"
+  action        = "lambda:InvokeFunction"
+  function_name = aws_lambda_function.cache_warmer[0].function_name
+  principal     = "events.amazonaws.com"
+  source_arn    = aws_cloudwatch_event_rule.cache_warm[0].arn
+}

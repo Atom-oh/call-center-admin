@@ -13,3 +13,8 @@ hitl_acm_certificate_arn_us_east_1 = "arn:aws:acm:us-east-1:<ACCOUNT_ID>:certifi
 hitl_callback_domain = "callcenter-dev-hitl.example.com"
 # Streamlit image tag (commit SHA pushed to ECR):
 hitl_image_tag = "REPLACE_ME"
+
+# ADR-002 cache-warming — OPTIONAL, default OFF. Uncomment to keep the Bedrock
+# prompt cache warm via an EventBridge cron (cost: ~1 warm Bedrock call / 4 min).
+# enable_cache_warming   = true
+# cache_warming_schedule = "rate(4 minutes)"

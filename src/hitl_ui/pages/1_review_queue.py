@@ -13,7 +13,12 @@ from typing import Any
 import boto3
 import streamlit as st
 from hitl_lib.auth import current_user, require_group
-from hitl_lib.ddb_access import list_review_queue, update_correction, update_skip
+from hitl_lib.ddb_access import (
+    AlreadyProcessedError,
+    list_review_queue,
+    update_correction,
+    update_skip,
+)
 
 require_group(["ops"])
 st.title("검토 대기열")
@@ -92,33 +97,49 @@ else:
     sel_대 = sel_중 = sel_소 = None
     st.warning("분류 트리 파일을 찾을 수 없습니다 (/app/prompts/v1.0/taxonomy_tree.json).")
 
+# ADR-011: first-write-wins. If another reviewer handled the row meanwhile,
+# update_*() raises AlreadyProcessedError → tell the user + refresh, don't crash.
+_ALREADY = "이미 다른 검수자가 처리한 통화입니다. 목록을 새로고침합니다."
+
 cc1, cc2, cc3 = st.columns(3)
 with cc1:
     if st.button("이 분류가 맞다", use_container_width=True):
-        update_correction(
-            selected,
-            {
-                "대code": record["category_대code"],
-                "중code": record["category_중code"],
-                "소code": record["category_소code"],
-            },
-            current_user(),
-        )
-        st.success("확정")
+        try:
+            update_correction(
+                selected,
+                {
+                    "대code": record["category_대code"],
+                    "중code": record["category_중code"],
+                    "소code": record["category_소code"],
+                },
+                current_user(),
+            )
+        except AlreadyProcessedError:
+            st.warning(_ALREADY)
+        else:
+            st.success("확정")
         st.rerun()
 with cc2:
     can_save = sel_대 is not None and sel_중 is not None and sel_소 is not None
     if st.button("교정 저장", use_container_width=True, type="primary", disabled=not can_save):
         assert sel_대 and sel_중 and sel_소  # type narrowing for mypy
-        update_correction(
-            selected,
-            {"대code": sel_대["code"], "중code": sel_중["code"], "소code": sel_소["code"]},
-            current_user(),
-        )
-        st.success("교정 저장")
+        try:
+            update_correction(
+                selected,
+                {"대code": sel_대["code"], "중code": sel_중["code"], "소code": sel_소["code"]},
+                current_user(),
+            )
+        except AlreadyProcessedError:
+            st.warning(_ALREADY)
+        else:
+            st.success("교정 저장")
         st.rerun()
 with cc3:
     if st.button("스킵 (불분명)", use_container_width=True):
-        update_skip(selected, current_user())
-        st.info("스킵")
+        try:
+            update_skip(selected, current_user())
+        except AlreadyProcessedError:
+            st.warning(_ALREADY)
+        else:
+            st.info("스킵")
         st.rerun()

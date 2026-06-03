@@ -31,3 +31,18 @@ variable "firehose_arn" {
   type    = string
   default = ""
 }
+
+# ADR-002 (cache warming) — OPTIONAL, default OFF. When true, an EventBridge cron
+# invokes the cache_warmer Lambda to keep the 2-breakpoint prompt cache warm.
+# Adds zero AWS resources / zero recurring Bedrock cost when false.
+variable "enable_cache_warming" {
+  type    = bool
+  default = false
+}
+
+# Cron interval — kept under Bedrock's ~5-min prompt-cache TTL. Only consulted
+# when enable_cache_warming = true.
+variable "cache_warming_schedule" {
+  type    = string
+  default = "rate(4 minutes)"
+}

@@ -103,7 +103,7 @@ CloudWatch Logs → S3 Export 가 별도 운영. Phase 2 에서 retention 비용
 - `infra/envs/stg/main.tf` + `infra/envs/prd/main.tf` 의 `module "hitl_ui"` 블록에 `audit_retention_days = 1827` 명시.
 - `infra/envs/dev/main.tf` 는 명시 안 함 (module default 365d 유지).
 - `infra/modules/hitl-ui/variables.tf` 의 default 는 그대로 365 유지 — 보수적 default 보다 명시적 override 가 더 추적 가능.
-- 회귀 가드: stg/prd 에 audit_retention_days override 가 사라지면 `terraform plan` 에서 변경 감지되어 PR 리뷰에서 catch. 향후 자동 가드 test 검토 (현재는 plan 의존).
+- 회귀 가드 (자동화 완료, PR #16): `tests/integration/test_env_layout.py::test_audit_retention_5y_in_stg_prd` 가 stg/prd 각각의 `main.tf` 의 `module "hitl_ui"` 블록에서 `audit_retention_days = 1827` override 를 정규식으로 검증한다 (`@pytest.mark.parametrize("env", ("stg", "prd"))` — 두 env 모두 강제). override 가 사라지면 `terraform plan` drift 감지에 더해 CI `pytest` 단계에서 즉시 fail. (이전 "plan 의존" 상태에서 자동 가드로 격상.)
 
 ## References
 

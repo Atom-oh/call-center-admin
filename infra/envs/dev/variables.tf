@@ -44,3 +44,17 @@ variable "hitl_image_tag" {
   default     = "REPLACE_ME"
   description = "Immutable Streamlit container image tag (commit SHA)."
 }
+
+# ADR-002 cache-warming — OPTIONAL, default OFF. Set true in terraform.tfvars to
+# enable the EventBridge cron + warmer Lambda (keeps prompt cache warm).
+variable "enable_cache_warming" {
+  type        = bool
+  default     = false
+  description = "Enable Bedrock prompt-cache warming cron (ADR-002). Adds zero resources when false."
+}
+
+variable "cache_warming_schedule" {
+  type        = string
+  default     = "rate(4 minutes)"
+  description = "EventBridge schedule for the cache warmer (under Bedrock ~5-min cache TTL)."
+}
