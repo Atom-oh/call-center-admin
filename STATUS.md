@@ -2,7 +2,7 @@
 
 **Phase 1 완료**: 2026-05-28
 **현재 HEAD**: `70805d9` (PR #20 머지) — origin/main, GitHub: `Atom-oh/call-center-admin`
-**테스트 현황**: 155 passed, 0 failed (ADR 후속 작업으로 +28: cache_warmer 14, eval variance 7, HITL lock 4, 기타)
+**테스트 현황**: 156 passed, 0 failed (ADR 후속 작업으로 cache_warmer 14, eval variance 7, HITL lock 4 등 추가)
 **Terraform 현황**: dev / stg / prd 모두 `fmt -recursive` clean + `validate` Success
 **ADR**: 14개 (모두 Mermaid 다이어그램 포함) — `docs/decisions/README.md`
 

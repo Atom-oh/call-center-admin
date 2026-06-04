@@ -7,9 +7,9 @@
 ## Context
 
 DDB 의 `consult-results` 테이블이 분류 결과를 저장. 자연스러운 attribute 명:
-- `대code` (대분류 코드)
-- `중code` (중분류 코드)
-- `소code` (소분류 코드)
+- `category_대code` (대분류 코드)
+- `category_중code` (중분류 코드)
+- `category_소code` (소분류 코드)
 - `classifiedAt` (분류 시각)
 - `callId`, `confidence`, `reason` 등
 
@@ -17,14 +17,14 @@ DDB 의 `consult-results` 테이블이 분류 결과를 저장. 자연스러운 
 
 **핵심 제약**: DynamoDB GSI **index 명** 은 `[a-zA-Z0-9_.-]{3,255}` 패턴만 허용 (AWS API constraint). attribute 명은 unicode 허용. 즉:
 
-- ✅ attribute name = `대code` (한국어 OK)
+- ✅ attribute name = `category_대code` (한국어 OK)
 - ❌ index name = `category-대code-classifiedAt-index` (한국어 reject)
 
 초기 안: index 명도 한국어로 → Terraform plan 단계에서 API validation 실패.
 
 ## Decision
 
-**Attribute 명** 은 한국어 허용 (`대code`, `중code`, `소code`). **GSI index 명** 은 ASCII 음역 (romanization) 사용.
+**Attribute 명** 은 한국어 허용 (`category_대code`, `category_중code`, `category_소code`). **GSI index 명** 은 ASCII 음역 (romanization) 사용.
 
 음역 규칙:
 - `대` → `daecode` (대분류)
@@ -32,13 +32,13 @@ DDB 의 `consult-results` 테이블이 분류 결과를 저장. 자연스러운 
 - `소` → `socode` (소분류)
 
 GSI 명명:
-- `category-daecode-classifiedAt-index` — `대code` hash + `classifiedAt` range
-- `category-jungcode-classifiedAt-index` — `중code` hash + `classifiedAt` range
-- `category-socode-classifiedAt-index` — `소code` hash + `classifiedAt` range
+- `category-daecode-classifiedAt-index` — `category_대code` hash + `classifiedAt` range
+- `category-jungcode-classifiedAt-index` — `category_중code` hash + `classifiedAt` range
+- `category-socode-classifiedAt-index` — `category_소code` hash + `classifiedAt` range
 
 Persistence 코드 (`src/lib/persistence.py`):
-- `build_ddb_item()` 가 `대code` / `중code` / `소code` 키로 dict 구성
-- DDB query 시 `IndexName="category-daecode-classifiedAt-index"`, `KeyConditionExpression` 안의 attribute 명은 `#daecode` placeholder → `ExpressionAttributeNames={"#daecode": "대code"}` 매핑
+- `build_ddb_item()` 가 `category_대code` / `category_중code` / `category_소code` 키로 dict 구성
+- DDB query 시 `IndexName="category-daecode-classifiedAt-index"`, `KeyConditionExpression` 안의 attribute 명은 `#daecode` placeholder → `ExpressionAttributeNames={"#daecode": "category_대code"}` 매핑
 
 ## Architecture Flow
 
@@ -106,7 +106,7 @@ AWS API constraint 위반. 거부.
 - `infra/modules/storage/main.tf` — `aws_dynamodb_table.consult_results` 의 `attribute` 블록에 한국어 name 사용. `global_secondary_index.name` 은 ASCII 음역.
 - `src/lib/persistence.py:build_ddb_item` — Python dict 키로 한국어 문자열 사용 (Python 3.12 unicode OK)
 - 신규 query 시 항상 `ExpressionAttributeNames` 로 placeholder 매핑
-- 회귀 테스트: `tests/unit/test_persistence.py::test_build_item_uses_korean_keys`
+- 회귀 테스트: `tests/unit/test_persistence.py::test_build_ddb_item_has_all_required_fields` (한국어 키 `category_대code`/`category_중code`/`category_소code` assert)
 - 문서 sync 가이드: 본 ADR + `infra/CLAUDE.md` DynamoDB 섹션 + 설계 spec §3.4 가 동일 음역 규칙 명시
 
 ## References

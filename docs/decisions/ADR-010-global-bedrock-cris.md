@@ -28,10 +28,10 @@ Bedrock 호출 시 **global CRIS** 사용:
 
 IAM 권한:
 - Lambda execution role 에 `bedrock:InvokeModel` 의 `Resource` 에 inference-profile ARN 명시:
-  - `arn:aws:bedrock:*::foundation-model/anthropic.claude-opus-4-7-*`
-  - `arn:aws:bedrock:*::inference-profile/global.anthropic.claude-opus-4-*`
+  - `arn:aws:bedrock:ap-northeast-2:${account_id}:inference-profile/global.anthropic.claude-opus-4-7`
+  - `arn:aws:bedrock:*::foundation-model/anthropic.claude-opus-4-*`
   - 동일 패턴 sonnet-4-6
-- 와일드카드 region 사용 (`*`) — global CRIS 가 어느 리전으로 라우팅할지 사전 결정 불가
+- inference-profile ARN 은 region 을 `ap-northeast-2` 로 고정. region 와일드카드(`*`)는 foundation-model ARN 에만 적용 — global CRIS 가 어느 리전으로 라우팅할지 사전 결정 불가하기 때문.
 
 ## Architecture Flow
 
@@ -84,7 +84,7 @@ flowchart TD
 - CloudTrail / KMS audit log 에서 호출 리전이 동적 — 로그 분석 시 multi-region 고려 필요.
 
 ### Neutral
-- IAM policy 의 region wildcard (`*`) 가 보안 검토 대상이지만, `Resource` 의 model/inference-profile prefix 가 충분히 좁아 위험 낮음.
+- foundation-model ARN 의 region wildcard (`*`) 가 보안 검토 대상이지만, inference-profile ARN 은 `ap-northeast-2` 로 고정이고 `Resource` 의 model prefix 가 충분히 좁아 위험 낮음.
 - Anthropic 가 향후 global pool 의 routing 정책 변경 시 별도 검토 필요.
 
 ## Alternatives Considered
@@ -106,15 +106,15 @@ flowchart TD
 
 ## Implementation Notes
 
-- `src/lib/bedrock_client.py` — 환경변수 `BEDROCK_MODEL_ID_OPUS` / `BEDROCK_MODEL_ID_SONNET` 로 model ID 주입. default `global.anthropic.claude-opus-4-7` / `global.anthropic.claude-sonnet-4-6`.
-- `infra/modules/classify-pipeline/iam.tf` — Lambda role 의 bedrock:InvokeModel 권한에 inference-profile ARN 패턴 추가
+- `src/lambdas/classify/handler.py` (env `MODEL_ID`) / `src/lambdas/verify/handler.py` (env `VERIFY_MODEL_ID`) 로 model ID 주입. `infra/modules/classify-pipeline/main.tf` 에서 각각 `global.anthropic.claude-opus-4-7` / `global.anthropic.claude-sonnet-4-6` 으로 설정.
+- `infra/modules/classify-pipeline/main.tf` 의 인라인 정의 — Lambda role 의 bedrock:InvokeModel 권한에 inference-profile ARN 패턴 추가
 - `.github/workflows/pr-review.yml` — `ANTHROPIC_MODEL` env 가 `global.anthropic.claude-opus-4-8` (PR #22 머지). production classify/verify Lambda 의 model ID 와 의도적으로 분기 — PR Review 는 자체 트래픽이라 별도 evaluation gate 없이 신규 모델 적용 가능.
-- `tests/structure/test-github-actions.sh` 가 `global.anthropic.claude-opus-4-7` 문자열 grep 검증
+- `tests/structure/test-github-actions.sh` 가 `.github/workflows/pr-review.yml` 에서 `global.anthropic.claude-opus-4-8` 문자열 grep 검증 (PR Review 워크플로우 모델)
 - 회귀 인시던트 기록: PR #10 시점에 Atlantis IRSA 가 `inference-profile/global.anthropic.claude-opus-4-*` ARN 권한 누락으로 AI Code Review 일시 실패 — IAM 권한 추가 후 정상화. ADR-009 도 동일 인시던트 참조.
 
 ## References
 
-- 관련 코드: `src/lib/bedrock_client.py`, `infra/modules/classify-pipeline/iam.tf` (bedrock 권한), `.github/workflows/pr-review.yml`
+- 관련 코드: `src/lib/bedrock_client.py`, `infra/modules/classify-pipeline/main.tf` 의 인라인 정의 (bedrock 권한), `.github/workflows/pr-review.yml`
 - AWS docs: [Cross-region inference profiles](https://docs.aws.amazon.com/bedrock/latest/userguide/cross-region-inference.html)
 - 관련 spec: §3.5 (Bedrock 통합), §7.4 (보안 / IAM)
 - 관련 ADR: [[ADR-009-atlantis-for-terraform-deployment]] (Atlantis IRSA 권한 인시던트)

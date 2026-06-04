@@ -2,7 +2,7 @@
 
 - **Status**: Accepted
 - **Date**: 2026-05-22 (재문서화 2026-05-27)
-- **Affects**: `infra/modules/classify-pipeline/main.tf`, `infra/modules/classify-pipeline/scripts/stage_lambda.sh`
+- **Affects**: `infra/modules/classify-pipeline/main.tf`
 
 ## Context
 
@@ -24,22 +24,34 @@ Lambda 코드 패키징은 `archive_file` data source 가 ZIP 생성하는 방�
 
 ```hcl
 data "external" "<name>_stage" {
-  program = ["bash", "${path.module}/scripts/stage_lambda.sh", "<name>"]
+  program = ["bash", "-c", <<-EOT
+    set -e
+    STAGE_DIR=${path.module}/build/<name>
+    SRC_DIR=${path.module}/../../../src
+    rm -rf "$STAGE_DIR"
+    mkdir -p "$STAGE_DIR"
+    cp -R "$SRC_DIR/lib" "$STAGE_DIR/"
+    mkdir -p "$STAGE_DIR/lambdas"
+    cp -R "$SRC_DIR/lambdas/<name>" "$STAGE_DIR/lambdas/"
+    find "$STAGE_DIR" -type d -name __pycache__ -exec rm -rf {} + || true
+    echo "{\"staged\":\"$STAGE_DIR\"}"
+  EOT
+  ]
 }
 
 data "archive_file" "<name>" {
   type        = "zip"
-  source_dir  = data.external.<name>_stage.result.staging_dir
+  source_dir  = data.external.<name>_stage.result.staged
   output_path = "${path.module}/build/<name>.zip"
 }
 ```
 
-`scripts/stage_lambda.sh` 가:
-1. `${path.module}/build/<name>/` 디렉토리 생성 (있으면 clean)
-2. 해당 Lambda 의 핸들러만 복사 (`src/lambdas/<name>/*`)
-3. 공유 lib 복사 (`src/lib/*`)
-4. 필요 시 추가 의존 (`src/taxonomy/*`, `src/prompts/*`) 복사
-5. staging dir 절대경로를 JSON `{"staging_dir": "..."}` 으로 stdout 출력
+`main.tf` 의 인라인 bash heredoc 이:
+1. `${path.module}/build/<name>/` 디렉토리 생성 (있으면 `rm -rf` 로 clean)
+2. 공유 lib 복사 (`src/lib/*`)
+3. 해당 Lambda 의 핸들러만 복사 (`src/lambdas/<name>/*`)
+4. 필요 시 추가 의존 (`src/prompts/*`) 복사
+5. `__pycache__` 정리 후 staging dir 절대경로를 JSON `{"staged": "..."}` 으로 stdout `echo` 출력
 
 ## Architecture Flow
 
@@ -83,7 +95,7 @@ flowchart TD
 ### Positive
 - 각 Lambda ZIP 이 자기 코드 + 필요한 의존만 포함 — 패키지 크기 최소
 - 한 Lambda 의 코드 변경이 다른 Lambda 의 hash 에 영향 0 — Terraform plan 에서 변경 범위 명확
-- 새 Lambda 추가 시 `stage_lambda.sh` 의 case 문에 1 회 추가 + 새 `data "external" / "archive_file"` 블록 1 회 추가 — O(1) 관리 비용
+- 새 Lambda 추가 시 `main.tf` 에 인라인 heredoc 을 가진 새 `data "external" / "archive_file"` 블록 1 회 추가 — O(1) 관리 비용
 - staging dir 가 명시적 디렉토리이므로 디버그 시 inspect 용이 (`ls build/<name>/`)
 
 ### Negative
@@ -111,14 +123,14 @@ Python 패키징 복잡도 증가. 4 개의 작은 패키지로 분할은 과도
 
 ## Implementation Notes
 
-- `infra/modules/classify-pipeline/scripts/stage_lambda.sh` — `case "$1"` 문으로 Lambda 마다 복사 대상 정의
-- `data "external"` 의 stdout JSON 은 escape 처리 정확해야 — `jq -n --arg dir "$STAGING_DIR" '{staging_dir: $dir}'` 사용
+- `infra/modules/classify-pipeline/main.tf` 의 `data "external" "<name>_stage"` 블록 — 인라인 bash heredoc 으로 Lambda 마다 복사 대상 정의
+- `data "external"` 의 stdout JSON 은 escape 처리 정확해야 — `echo "{\"staged\":\"$STAGE_DIR\"}"` 로 plain echo 출력
 - `.gitignore` 에 `infra/modules/*/build/` 추가됨
 - `archive_file.output_path` 도 `build/` 안으로 위치 → git ignore 됨
 - Terraform 1.9+ 에서 동작 확인 (`data "external"` provider ~> 2.3)
 
 ## References
 
-- 관련 코드: `infra/modules/classify-pipeline/main.tf`, `infra/modules/classify-pipeline/scripts/stage_lambda.sh`
+- 관련 코드: `infra/modules/classify-pipeline/main.tf`
 - Terraform docs: [external data source](https://registry.terraform.io/providers/hashicorp/external/latest/docs/data-sources/external)
 - 관련 spec: §3.3 (Lambda 패키징)

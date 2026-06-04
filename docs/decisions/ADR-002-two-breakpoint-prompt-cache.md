@@ -91,7 +91,7 @@ spec §3.7.5 의 합성 데이터 RAG 흐름과 결합 시 third cache breakpoin
 
 - `src/lib/prompts.py`: `PromptBundle.system_blocks` 가 `list[str]` (Phase 1 에서 항상 길이 2). `build_prompt_bundle()` 가 두 source (`rules_md`, `taxonomy_json`) 를 받아 빌드.
 - `src/lib/bedrock_client.py`: `classify()` 와 `warm()` 이 공통 `_build_system()` 으로 `system` array 를 `[{text}, {cachePoint}, {text}, {cachePoint}]` 순서로 조립 → 두 경로가 동일 cache key.
-- **워밍 ping 구현**: `src/lambdas/cache_warmer/handler.py` (module-level `_ADAPTER.warm()`, `cache.warm.invoked` + `cache.warm.cacheReadTokens` EMF emit). Terraform `infra/modules/classify-pipeline/main.tf` 의 `aws_lambda_function.cache_warmer` + `aws_cloudwatch_event_rule.cache_warm` (모두 `count = var.enable_cache_warming ? 1 : 0`). IAM 은 `bedrock:InvokeModel` (opus inference-profile) + logs 만 (ADR-006). 정적 검증: `tests/integration/test_cache_warmer_definition.py` (10), 핸들러/`warm()` 단위 테스트: `tests/unit/test_cache_warmer_handler.py` (4).
+- **워밍 ping 구현**: `src/lambdas/cache_warmer/handler.py` (module-level `_ADAPTER.warm()`, `cache.warm.invoked` + `cache.warm.cacheReadTokens` EMF emit). Terraform `infra/modules/classify-pipeline/main.tf` 의 `aws_lambda_function.cache_warmer` + `aws_cloudwatch_event_rule.cache_warm` (모두 `count = var.enable_cache_warming ? 1 : 0`). IAM 은 `bedrock:InvokeModel` (opus inference-profile) + logs 만 (ADR-006). 정적 검증: `tests/integration/test_cache_warmer_definition.py` (11), 핸들러/`warm()` 단위 테스트: `tests/unit/test_cache_warmer_handler.py` (4).
 
 ## References
 
