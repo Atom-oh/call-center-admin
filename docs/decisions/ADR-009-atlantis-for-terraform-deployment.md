@@ -27,7 +27,7 @@ Terraform plan/apply 는 **Atlantis** 가 처리. `.github/workflows/terraform-{
 - IRSA: `<ATLANTIS_IRSA_ROLE>` (EKS service account → IAM role)
 - AssumeRole 체인: Atlantis IRSA → 전용 terraformer role with `ExternalId` (계정/role 명은 terraform.tfvars 로 주입)
 - 명령: PR 댓글 `atlantis plan` / `atlantis apply`
-- `apply_requirements: [approved, mergeable]` — 승인된 PR 만 apply
+- `apply_requirements` — env 별 차등: dev 는 `[mergeable]` 만, stg/prd 는 `[approved, mergeable]` (승인 + mergeable 충족 PR 만 apply)
 - `automerge: false` — apply 후 자동 merge 안 함 (사람이 merge)
 
 ## Architecture Flow
@@ -71,7 +71,7 @@ flowchart LR
 
 ### Positive
 - plan 결과가 PR comment 로 inline — 리뷰어 경험 통일
-- apply gating 이 `atlantis.yaml` 에 선언적 — `approved + mergeable` 미충족 시 자동 reject
+- apply gating 이 `atlantis.yaml` 에 선언적 — env 별 차등 (dev: `mergeable`, stg/prd: `approved + mergeable`) 미충족 시 자동 reject
 - IRSA 1회 구성으로 multi-repo 재사용 — 조직 내 신규 Terraform repo 합류 비용 ↓
 - AssumeRole 체인 + ExternalId 로 cross-account 보안 강화
 - Atlantis logs 가 audit trail (누가 언제 apply)
@@ -102,7 +102,7 @@ SaaS, 위와 동일. 거부.
 
 ## Implementation Notes
 
-- `atlantis.yaml` (v3) — `projects` 에 `dir: infra/envs/dev` 매핑. `apply_requirements: [approved, mergeable]`. `automerge: false`.
+- `atlantis.yaml` (v3) — `projects` 에 dev/stg/prd 매핑 (`dir: infra/envs/{dev,stg,prd}`). `apply_requirements` 는 env 별 차등: dev `[mergeable]`, stg/prd `[approved, mergeable]`. `automerge: false`.
 - IRSA role: `<ATLANTIS_IRSA_ROLE>` in EKS hub cluster, trust policy `pod-identity-association`
 - AssumeRole target: `var.terraformer_role_arn` (각 env 의 terraform.tfvars 로 주입, git-ignored)
 - GitHub App / webhook: 운영 서버 설정 (값은 비공개)

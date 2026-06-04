@@ -169,7 +169,7 @@ listener 에서만 지원**된다 (`InvalidLoadBalancerAction: Actions of type
 - **회귀 가드** (`tests/integration/test_hitl_ui_definition.py`):
   - `test_cloudfront_distribution_defined`
   - `test_cloudfront_uses_vpc_origin_resource` (C1)
-  - `test_cloudfront_vpc_origin_points_to_alb_with_http_only`
+  - `test_cloudfront_vpc_origin_points_to_alb_with_https`
   - `test_alb_is_internal_not_public` — VPC CIDR ingress 검증 (M1)
   - `test_cloudfront_uses_managed_cache_and_origin_request_policies` (M2)
   - `test_cloudfront_geo_restriction_allows_external_access` (M3)

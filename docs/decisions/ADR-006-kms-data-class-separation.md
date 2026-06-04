@@ -35,7 +35,7 @@
 - `pii_guard` → raw kms:Decrypt + masked kms:Encrypt
 - `classify` → masked kms:Decrypt
 - `verify` → masked kms:Decrypt
-- `persist` → analytics kms:Encrypt + ddb kms:Encrypt
+- `persist` → ddb kms:Encrypt (+ firehose:PutRecord — analytics CMK 는 직접 grant 하지 않고 Firehose delivery role 이 보유)
 
 `kms:*` 의 `Resource: "*"` 절대 사용 금지 — 항상 CMK ARN 명시.
 
@@ -126,11 +126,11 @@ masked + analytics 혼동 가능. 4 클래스가 명확.
 - 각 `aws_kms_alias` 는 `alias/callcenter-${var.env}-${class}` 형식
 - `aws_s3_bucket_server_side_encryption_configuration` 에서 `kms_master_key_id = aws_kms_key.<class>.arn`
 - DDB `server_side_encryption { enabled = true; kms_key_arn = aws_kms_key.ddb.arn }`
-- Lambda IAM (`infra/modules/classify-pipeline/iam.tf`) 에서 `kms:Decrypt` 의 `Resource` 는 명시적 ARN list
-- 회귀 테스트: `tests/structure/test-iam-scope.sh` (있다면) 에서 `kms:*` 의 Resource `"*"` grep 으로 감시
+- Lambda IAM (`infra/modules/classify-pipeline/main.tf` 의 인라인 `aws_iam_role_policy` 정의) 에서 `kms:Decrypt` 의 `Resource` 는 명시적 ARN list
+- `persist` Lambda IAM 은 ddb CMK (`kms_ddb_arn`) 만 직접 grant — analytics 데이터는 `firehose:PutRecord` 로 Firehose 에 전달하고, analytics CMK (`kms_analytics_arn`) grant 는 Firehose delivery role (`infra/modules/analytics/main.tf` 의 `aws_iam_role_policy.firehose`) 이 보유한다
 
 ## References
 
-- 관련 코드: `infra/modules/storage/main.tf` (kms_key 리소스 4개), `infra/modules/classify-pipeline/iam.tf`
+- 관련 코드: `infra/modules/storage/main.tf` (kms_key 리소스 4개), `infra/modules/classify-pipeline/main.tf` (각 Lambda IAM 인라인 정의)
 - 관련 spec: §7.4 (보안 / KMS 분리), §3.2 (S3 / KMS 매핑)
 - AWS docs: [KMS key policies for S3](https://docs.aws.amazon.com/AmazonS3/latest/userguide/UsingKMSEncryption.html)

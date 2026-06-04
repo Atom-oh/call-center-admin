@@ -2,7 +2,7 @@
 
 - **Status**: Accepted
 - **Date**: 2026-05-22 (재문서화 2026-05-27)
-- **Affects**: `infra/modules/classify-pipeline/sfn.tf`, `infra/modules/classify-pipeline/state-machine.json.tftpl`
+- **Affects**: `infra/modules/classify-pipeline/main.tf` 의 인라인 정의 (`aws_sfn_state_machine.definition = jsonencode({...})`)
 
 ## Context
 
@@ -26,7 +26,7 @@ S3 raw 버킷에 STT JSON 이 업로드되면 다음 단계를 거쳐 분류 결
 
 1. **PiiGuard** (Task / Lambda) — PII 마스킹
 2. **Classify** (Task / Lambda) — Opus 분류
-3. **ConfidenceBranch** (Choice) — confidence ≥ 0.85 분기
+3. **ConfidenceBranch** (Choice) — confidence ≥ 0.80 분기
 4. **Verify** (Task / Lambda) — Sonnet 교차 검증 (저신뢰만)
 5. **MarkAutoHigh** (Pass) — 고신뢰 path 의 state 동기화
 6. **Persist** (Task / Lambda) — DDB write + analytics S3 write
@@ -34,7 +34,7 @@ S3 raw 버킷에 STT JSON 이 업로드되면 다음 단계를 거쳐 분류 결
 8. **SendToPersistDlq** (Task / SQS sendMessage) — Catch 대상
 
 Retry / Catch 정책:
-- **Classify** state — `Bedrock.ThrottlingException` / `Bedrock.ServiceUnavailableException` 에 5 회 retry (exponential, 2x backoff). 그 외 3 회. Catch → SendToClassifyDlq
+- **Classify** state — `ThrottlingException` / `ServiceUnavailable` 에 5 회 retry (exponential, 2x backoff). 그 외 3 회. Catch → SendToClassifyDlq
 - **Verify** state — 동일
 - **Persist** state — DDB throttle 3 회 retry. Catch → SendToPersistDlq
 - **PiiGuard** state — 2 회 retry, Catch → SendToClassifyDlq
@@ -55,8 +55,8 @@ flowchart TD
     PG --> CL[Classify<br/>Lambda<br/>Bedrock Opus]
     CL -->|catch all retries| DLQ1
     CL --> CB{ConfidenceBranch<br/>Choice}
-    CB -- confidence < 0.85 --> VF[Verify<br/>Lambda<br/>Bedrock Sonnet]
-    CB -- confidence >= 0.85 --> MA[MarkAutoHigh<br/>Pass]
+    CB -- confidence < 0.80 --> VF[Verify<br/>Lambda<br/>Bedrock Sonnet]
+    CB -- confidence >= 0.80 --> MA[MarkAutoHigh<br/>Pass]
     VF -->|catch all retries| DLQ1
     VF --> PS[Persist<br/>Lambda]
     MA --> PS
@@ -104,10 +104,10 @@ flowchart TD
 ### Negative
 - Express 는 execution history 자동 영구 저장 안 함 — CW Logs `INCLUDE_EXECUTION_DATA` 의존
 - ResultPath / OutputPath 패턴이 정형화되어 있어 신규 state 추가 시 보일러플레이트
-- Choice state 의 threshold (0.85) 가 state machine 정의에 hardcoded — 런타임 변경 불가, Terraform apply 필요. (의도된 설계 — threshold 변경은 deploy gate 통과해야)
+- Choice state 의 threshold (0.80) 가 state machine 정의에 hardcoded — 런타임 변경 불가, Terraform apply 필요. (의도된 설계 — threshold 변경은 deploy gate 통과해야)
 
 ### Neutral
-- `ASL` 정의는 `state-machine.json.tftpl` 로 분리 — `templatefile()` 함수로 변수 주입
+- `ASL` 정의는 `infra/modules/classify-pipeline/main.tf` 의 `aws_sfn_state_machine.definition` 에 `jsonencode({...})` 인라인 — Lambda ARN, DLQ URL 은 Terraform 표현식으로 직접 주입
 - 매 PR 의 `terraform validate` 가 ASL 정적 validation 까지 포함
 - `tests/integration/test_sfn_definition.py` 가 state 이름 / 전이 구조 grep 검증
 
@@ -133,7 +133,7 @@ flowchart TD
 
 ## Implementation Notes
 
-- `infra/modules/classify-pipeline/state-machine.json.tftpl` — ASL 정의 (template). Lambda ARN, DLQ URL 변수 주입.
+- `infra/modules/classify-pipeline/main.tf` 의 `aws_sfn_state_machine.definition = jsonencode({...})` — ASL 인라인 정의. Lambda ARN, DLQ URL 을 Terraform 표현식으로 직접 주입.
 - `aws_sfn_state_machine` 의 `type = "EXPRESS"`. `logging_configuration.level = "ALL"`, `include_execution_data = true`.
 - IAM: SFN execution role 이 4 Lambda invoke + 2 SQS sendMessage 권한
 - EventBridge rule 이 S3 raw 의 `ObjectCreated` 이벤트를 패턴 매칭 → SFN startExecution
@@ -142,6 +142,6 @@ flowchart TD
 
 ## References
 
-- 관련 코드: `infra/modules/classify-pipeline/state-machine.json.tftpl`, `infra/modules/classify-pipeline/sfn.tf`
+- 관련 코드: `infra/modules/classify-pipeline/main.tf` (`aws_sfn_state_machine` 의 `definition = jsonencode({...})` 인라인 정의)
 - AWS docs: [SFN Express vs Standard](https://docs.aws.amazon.com/step-functions/latest/dg/concepts-standard-vs-express.html)
 - 관련 spec: §3 (시스템 아키텍처)

@@ -6,13 +6,13 @@
 
 설계서: `docs/superpowers/specs/2026-05-22-callcenter-stt-classification-design.md`
 구현 계획: `docs/superpowers/plans/` (Phase 1 6주, Phase 3 MLOps 4-6주)
-현재 진행: PR1~PR6 완료 (코드/Terraform 정의 + 42 단위 테스트). `STATUS.md` 참조.
+현재 진행: Phase 1 (PR1~PR10 + 후속) 완료 — 코드/Terraform 정의 + 156 단위·통합 테스트, 14 ADR. `STATUS.md` 참조.
 
 ## Tech Stack
 
 - **Language**: Python 3.12 (`from __future__ import annotations` 일관, PEP 604 unions)
 - **LLM**: Amazon Bedrock (Anthropic Claude Opus 4.7 primary, Sonnet 4.6 verify, ap-northeast-2)
-- **AWS**: Lambda (4종), Step Functions Express, EventBridge, S3, DynamoDB (+3 GSI, streams, TTL, PITR), KMS CMK ×4, SQS DLQ ×2, VPC + 8 Interface VPC Endpoints
+- **AWS**: Lambda (5종 — SFN 파이프라인 4 + cache_warmer 1[옵션]), Step Functions Express, EventBridge, S3, DynamoDB (+3 GSI, streams, TTL, PITR), KMS CMK ×4, SQS DLQ ×2, VPC + 8 Interface VPC Endpoints, ECS Fargate + ALB + Cognito + CloudFront(VPC Origin) — HITL UI
 - **IaC**: Terraform 1.9+ (workspace 분리: dev/stg/prd; remote state S3 + DDB lock)
 - **Dependencies**: `boto3`, `botocore`, `openpyxl`, `pydantic`
 - **Dev tools**: `pytest`, `moto` (AWS mock), `ruff`, `mypy --strict`, `pytest-cov`
@@ -36,20 +36,25 @@ infra/                      — Terraform 정의
   modules/
     shared/                 — VPC, 3 private subnets, 8 VPC endpoints
     storage/                — KMS×4, S3×4, DynamoDB+3GSIs, SQS DLQ×2
-    classify-pipeline/      — Lambda×4 + SFN Express + EventBridge
-  envs/dev/                 — dev 환경 root module
+    classify-pipeline/      — Lambda×4(SFN) + cache_warmer(옵션) + SFN Express + EventBridge
+    analytics/              — Glue + Firehose + Athena + QuickSight (BI)
+    hitl-ui/                — ECS Fargate + ALB + Cognito + CloudFront(VPC Origin)
+    observability/          — CW dashboard + 5 알람 + Slack relay
+  envs/{dev,stg,prd}/       — 환경별 root module
 src/
   lambdas/
     pii_guard/              — regex-based hard PII masking (raw → masked S3)
     classify/               — Bedrock Opus 4.7 분류 호출 (대/중/소 + confidence + reason)
     verify/                 — Bedrock Sonnet 4.6 cross-verify, 합의/불일치 분기
     persist/                — DDB put_item + (옵션) Firehose Parquet + EMF 메트릭
+    cache_warmer/           — (옵션, default-OFF) EventBridge cron → 프롬프트 캐시 워밍 (ADR-002)
   lib/                      — 공유 모듈 (taxonomy, pii_regex, prompts, output_schema,
                               bedrock_client, inference_adapter, persistence, metrics)
   prompts/v1.0/             — system_rules.md + taxonomy_tree.{json,md} (생성 산출물)
+  hitl_ui/                  — HITL 검수 Streamlit 앱 (streamlit_app + hitl_lib/ + pages/) — ADR-011
 tests/
-  unit/                     — 42개 pytest (모든 lib + lambda handler 커버)
-  integration/              — SFN ASL 정적 구조 검증
+  unit/                     — pytest (lib + lambda handler + hitl_lib 커버)
+  integration/              — SFN/observability/hitl-ui/cache_warmer ASL·정적 구조 검증
   golden/                   — 골든셋 scaffold (5행, g001만 real label)
 scripts/
   parse_taxonomy.py         — xlsx → src/prompts/v1.0/ 산출물 재생성 CLI
