@@ -32,11 +32,19 @@ def fake_streamlit(monkeypatch):
     return st_mock
 
 
-def _build_oidc_jwt(payload: dict) -> str:
-    """Build a fake unsigned JWT — header.payload.signature."""
-    header_b64 = base64.urlsafe_b64encode(json.dumps({"alg": "none"}).encode()).decode().rstrip("=")
+def _build_oidc_jwt(payload: dict, header: dict | None = None) -> str:
+    """Build a fake unsigned JWT — header.payload.signature.
+
+    `header` overrides the default `{"alg": "none"}` so signer/kid-dependent
+    paths (ADR-011 signer hardening) can be exercised.
+    """
+    header = header if header is not None else {"alg": "none"}
+    header_b64 = base64.urlsafe_b64encode(json.dumps(header).encode()).decode().rstrip("=")
     payload_b64 = base64.urlsafe_b64encode(json.dumps(payload).encode()).decode().rstrip("=")
     return f"{header_b64}.{payload_b64}.sig"
+
+
+_ALB_ARN = "arn:aws:elasticloadbalancing:ap-northeast-2:111122223333:loadbalancer/app/callcenter-dev/abc123"
 
 
 def test_decode_oidc_jwt_payload(fake_streamlit) -> None:
@@ -135,3 +143,79 @@ def test_fail_closed_when_crypto_unavailable_and_not_local_dev(fake_streamlit, m
     # Even with a valid-looking header, no claims must be issued.
     assert current_user() == "unknown"
     assert current_groups() == []
+
+
+# ── ADR-011 hardening: signer == ALB_ARN verification ──────────────────────
+# The ALB public-key endpoint (public-keys.auth.elb.<region>.amazonaws.com/<kid>)
+# serves keys for EVERY ALB in the region, so a token minted by a *different*
+# ALB would still pass the raw ES256 signature check. AWS documents verifying
+# the JWT header's `signer` field equals your own ALB ARN. The gate runs in the
+# crypto-available branch, after the kid check, BEFORE fetching the public key.
+
+
+def test_verify_signature_rejects_foreign_alb_signer(fake_streamlit, monkeypatch) -> None:
+    """ALB_ARN set + header.signer is a DIFFERENT ALB → refuse claims, and never
+    even fetch the public key (reject early)."""
+    monkeypatch.delenv("LOCAL_DEV", raising=False)
+    monkeypatch.setenv("ALB_ARN", _ALB_ARN)
+    jwt = _build_oidc_jwt(
+        {"email": "attacker@example.com", "cognito:groups": ["ops"]},
+        header={
+            "alg": "ES256",
+            "kid": "k1",
+            "signer": "arn:aws:elasticloadbalancing:ap-northeast-2:999999999999:loadbalancer/app/evil/deadbeef",
+        },
+    )
+    fake_streamlit.context.headers = {"x-amzn-oidc-data": jwt}
+
+    import hitl_lib.auth as auth_mod
+
+    monkeypatch.setattr(auth_mod, "_CRYPTO_AVAILABLE", True)
+    fetch_spy = MagicMock(return_value=None)
+    monkeypatch.setattr(auth_mod, "_fetch_alb_public_key", fetch_spy)
+
+    assert auth_mod._verify_signature(jwt) == {}
+    fetch_spy.assert_not_called()  # rejected before any key fetch
+
+
+def test_verify_signature_accepts_matching_signer(fake_streamlit, monkeypatch) -> None:
+    """ALB_ARN set + header.signer == ALB_ARN → gate passes (proceeds to key
+    fetch). We stub the fetch to None so the test stays crypto-free; the point
+    is that the matching signer is NOT rejected at the gate."""
+    monkeypatch.delenv("LOCAL_DEV", raising=False)
+    monkeypatch.setenv("ALB_ARN", _ALB_ARN)
+    jwt = _build_oidc_jwt(
+        {"email": "ok@example.com", "cognito:groups": ["ops"]},
+        header={"alg": "ES256", "kid": "k1", "signer": _ALB_ARN},
+    )
+    fake_streamlit.context.headers = {"x-amzn-oidc-data": jwt}
+
+    import hitl_lib.auth as auth_mod
+
+    monkeypatch.setattr(auth_mod, "_CRYPTO_AVAILABLE", True)
+    fetch_spy = MagicMock(return_value=None)
+    monkeypatch.setattr(auth_mod, "_fetch_alb_public_key", fetch_spy)
+
+    auth_mod._verify_signature(jwt)
+    fetch_spy.assert_called_once()  # gate passed → proceeded to key fetch
+
+
+def test_verify_signature_skips_signer_gate_when_alb_arn_unset(fake_streamlit, monkeypatch) -> None:
+    """No ALB_ARN configured (LOCAL_DEV/desktop) → signer gate is skipped; flow
+    proceeds to key fetch regardless of the signer header."""
+    monkeypatch.delenv("LOCAL_DEV", raising=False)
+    monkeypatch.delenv("ALB_ARN", raising=False)
+    jwt = _build_oidc_jwt(
+        {"email": "ok@example.com", "cognito:groups": ["ops"]},
+        header={"alg": "ES256", "kid": "k1", "signer": "anything"},
+    )
+    fake_streamlit.context.headers = {"x-amzn-oidc-data": jwt}
+
+    import hitl_lib.auth as auth_mod
+
+    monkeypatch.setattr(auth_mod, "_CRYPTO_AVAILABLE", True)
+    fetch_spy = MagicMock(return_value=None)
+    monkeypatch.setattr(auth_mod, "_fetch_alb_public_key", fetch_spy)
+
+    auth_mod._verify_signature(jwt)
+    fetch_spy.assert_called_once()  # no gate → proceeded

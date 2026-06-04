@@ -452,3 +452,13 @@ def test_cloudfront_geo_restriction_allows_external_access(main_tf: str) -> None
         "geo_restriction must be `none` to honor ADR-013 external access goal"
     )
     assert '"KR"' not in cf_block, "KR-only whitelist contradicts external access intent"
+
+
+def test_ecs_task_injects_alb_arn_for_signer_gate(main_tf: str) -> None:
+    """ADR-011 hardening: the ECS task definition must inject ALB_ARN =
+    aws_lb.hitl.arn so hitl_lib.auth's signer gate activates in prod (rejects
+    OIDC tokens minted by a different ALB in the region)."""
+    td = main_tf.split('aws_ecs_task_definition" "hitl"')[1].split('resource "aws_')[0]
+    assert '{ name = "ALB_ARN", value = aws_lb.hitl.arn }' in td, (
+        "ECS task must inject ALB_ARN = aws_lb.hitl.arn (ADR-011 signer gate)"
+    )

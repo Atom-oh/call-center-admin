@@ -134,6 +134,7 @@ flowchart TD
   - `aws_cloudwatch_log_group.hitl_audit` — Cognito user → action trail 별도 retention 365d
 - `src/hitl_ui/hitl_lib/auth.py`:
   - `_verify_signature(jwt)` — ALB region public key fetch + ES256 검증
+  - **signer 하드닝**: ALB 공개키 엔드포인트(`public-keys.auth.elb.<region>.amazonaws.com/<kid>`)는 **region 내 모든 ALB** 의 키를 서빙하므로, 다른 ALB 가 민팅한 토큰도 raw ES256 검증은 통과한다. AWS 권장 방어대로 JWT 헤더의 `signer` 가 자기 ALB ARN(`ALB_ARN` env)과 일치하는지 키 fetch **이전에** 검증해 불일치 시 거부. `ALB_ARN` 미설정(LOCAL_DEV/desktop)이면 게이트 skip. `infra/modules/hitl-ui/main.tf` 의 ECS task definition 이 `ALB_ARN = aws_lb.hitl.arn` 주입. 회귀 가드: `tests/unit/test_hitl_auth.py::test_verify_signature_rejects_foreign_alb_signer` 외 2건 + `tests/integration/test_hitl_ui_definition.py::test_ecs_task_injects_alb_arn_for_signer_gate`.
   - `LOCAL_DEV=1` escape 는 unit test / 개발 환경 한정 — prd 빌드 시 환경변수 미설정
 - `src/hitl_ui/Dockerfile`:
   - `PYTHONPATH=/app/hitl_ui:/app` — hitl_lib + (project) lib 동시 노출
