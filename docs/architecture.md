@@ -44,7 +44,7 @@
 - **VPC** — 3 private subnets, S3 Gateway endpoint + 8 Interface endpoints (bedrock-runtime, dynamodb, kms, states, secretsmanager, ecr.{dkr,api}, logs). Lambda is VPC-attached (Phase 1 prd; dev acceptable without).
 - **IAM least-privilege** — per-Lambda role, Bedrock scoped to model ARN pattern, KMS scoped to data-class CMK, S3 scoped to bucket+prefix.
 - **CloudTrail** — all data events ON. raw S3 access auditable.
-- **Cognito** — User Pool with 3 groups (`ops`, `analyst`, `compliance`); ALB `authenticate-cognito`. `hitl_lib.auth` verifies the ALB OIDC JWT signature (ES256, key fetched by `kid` from the regional ALB public-key endpoint), fail-closed (ADR-011).
+- **Cognito** — User Pool with 3 groups (`ops`, `analyst`, `compliance`); ALB `authenticate-cognito`. `hitl_lib.auth` verifies the ALB OIDC JWT signature (ES256, key fetched by `kid`) and that the JWT `signer` equals our ALB ARN (`ALB_ARN` env, rejecting tokens minted by other ALBs in the region), fail-closed (ADR-011).
 - **CloudFront + VPC Origin + WAF** (ADR-013) — public entry to the HITL UI; viewer ACM cert in us-east-1, ALB HTTPS listener cert in ap-northeast-2.
 
 ### Full Architecture Diagram
@@ -179,7 +179,7 @@
 - **VPC** — 3 private subnet, S3 Gateway endpoint + 8 Interface endpoint (bedrock-runtime, dynamodb, kms, states, secretsmanager, ecr.{dkr,api}, logs). Lambda는 VPC attached (Phase 1 prd; dev는 미부착 허용).
 - **IAM 최소 권한** — Lambda별 role, Bedrock은 model ARN 패턴으로 좁힘, KMS는 데이터 클래스 CMK로 좁힘, S3는 bucket+prefix로 좁힘.
 - **CloudTrail** — 모든 데이터 이벤트 ON. raw S3 접근 감사 가능.
-- **Cognito** — User Pool + 3 그룹 (`ops`, `analyst`, `compliance`); ALB `authenticate-cognito`. `hitl_lib.auth` 가 ALB OIDC JWT 서명(ES256, regional ALB 공개키를 `kid` 로 fetch)을 검증, fail-closed (ADR-011).
+- **Cognito** — User Pool + 3 그룹 (`ops`, `analyst`, `compliance`); ALB `authenticate-cognito`. `hitl_lib.auth` 가 ALB OIDC JWT 서명(ES256, `kid` 로 공개키 fetch) + JWT `signer` 가 자기 ALB ARN(`ALB_ARN` env)과 일치하는지(region 내 다른 ALB 토큰 거부) 검증, fail-closed (ADR-011).
 - **CloudFront + VPC Origin + WAF** (ADR-013) — HITL UI 공개 진입점; viewer ACM 인증서는 us-east-1, ALB HTTPS listener 인증서는 ap-northeast-2.
 
 ### 전체 아키텍처 다이어그램

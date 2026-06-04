@@ -517,6 +517,11 @@ resource "aws_ecs_task_definition" "hitl" {
         { name = "DDB_TABLE", value = "callcenter-${var.env}-consult-results" },
         # M2: ALB region for OIDC public key fetch.
         { name = "ALB_REGION", value = var.alb_region },
+        # ADR-011 hardening: our own ALB ARN. hitl_lib.auth rejects any OIDC
+        # token whose JWT `signer` header != this value, blocking tokens minted
+        # by a different ALB in the same region (the public-key endpoint is
+        # region-wide). Injecting the ARN here is what activates the gate.
+        { name = "ALB_ARN", value = aws_lb.hitl.arn },
         # M3: audit log group name for the auth/compliance/correction trail.
         { name = "AUDIT_LOG_GROUP", value = aws_cloudwatch_log_group.hitl_audit.name },
       ]

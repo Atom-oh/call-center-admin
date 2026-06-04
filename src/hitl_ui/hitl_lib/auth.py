@@ -116,6 +116,22 @@ def _verify_signature(jwt_like: str) -> dict[str, Any]:
         _logger.warning("OIDC JWT missing kid")
         return {}
 
+    # ADR-011 hardening: the ALB public-key endpoint
+    # (public-keys.auth.elb.<region>.amazonaws.com/<kid>) serves keys for EVERY
+    # ALB in the region, so a token minted by a *different* ALB would still pass
+    # the raw ES256 signature check. AWS' documented defense is to verify the
+    # JWT header's `signer` field equals our own ALB ARN. When ALB_ARN is
+    # configured (the ECS task definition injects it in prod), reject any
+    # mismatching signer BEFORE fetching the key. Unset ALB_ARN
+    # (LOCAL_DEV/desktop) skips the gate; those paths already fail-close
+    # elsewhere when crypto deps are absent.
+    expected_signer = os.environ.get("ALB_ARN")
+    if expected_signer:
+        signer = header.get("signer")
+        if signer != expected_signer:
+            _logger.warning("OIDC signer mismatch — refusing claims")
+            return {}
+
     region = os.environ.get("ALB_REGION", "ap-northeast-2")
     pem = _fetch_alb_public_key(region, kid)
     if pem is None:
