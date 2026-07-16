@@ -14,6 +14,7 @@ name: AI Code Review
 on:
   pull_request_target:
     types: [opened, synchronize]
+    branches: [main]
 
 jobs:
   review:
@@ -38,9 +39,17 @@ jobs:
       # 이동/보호되지 않아 미검증 코드가 이 신뢰된 잡에 섞여드는 창을 없앤다. PR head 는
       # 체크아웃 안 함(코드 미실행) — scripts/* + CLAUDE.md/docs/decisions/*는 base 신뢰
       # 컨텍스트로만 쓴다.
+      # persist-credentials: false — 기본값(true)은 GH_TOKEN을 .git/config의
+      # http.<host>.extraheader(AUTHORIZATION: basic <base64>)로 남긴다. Kiro가
+      # base 체크아웃 전체를 read/grep/fs_read 하도록 의도적으로 허용돼 있어(BASE
+      # CONTEXT 검증), diff 인젝션이 Kiro를 유도해 .git/config를 읽고 그 값을 셀
+      # 출력에 뱉으면 scrub_secrets의 정규식이 이 토큰 포맷을 잡지 못해
+      # pull-requests:write 토큰이 그대로 새어나간다. 체크아웃 시점에 자격증명을
+      # 아예 남기지 않는 것이 예방 계층 — scrub_secrets는 그 뒤의 last-line-of-defense.
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
 
       - name: Verify CLIs present (runner image)
         run: |
@@ -215,9 +224,13 @@ jobs:
             echo "---"
             echo "_Triggered by commit \`${{ github.event.pull_request.head.sha }}\` · workflow: \`.github/workflows/pr-review.yml\`_"
           } > /tmp/comment.md
-          # 기존 marker 코멘트가 있으면 PATCH로 업서트, 없으면 새로
+          # 기존 marker 코멘트가 있으면 PATCH로 업서트, 없으면 새로. 신규 마커뿐 아니라
+          # 이 워크플로 이전 버전(flat 패널)이 쓰던 구 마커도 함께 찾는다 — 안 그러면
+          # 마커 변경 시점 이후 첫 PR마다 구 코멘트를 못 찾아 새 코멘트를 추가로 남기고,
+          # 그 뒤로도 매 PR이 신규 마커 코멘트 하나씩 업서트 대상을 갖게 되어 구 코멘트가
+          # 화면에 stale 하게 계속 남는다.
           EXISTING=$(gh api "repos/$REPO/issues/$PR_NUMBER/comments" \
-            --jq '.[] | select(.body | contains("<!-- call-center-admin-pr-review -->")) | .id' 2>/dev/null | head -1)
+            --jq '.[] | select(.body | contains("<!-- call-center-admin-pr-review -->") or contains("<!-- multi-ai-pr-review -->")) | .id' 2>/dev/null | head -1)
           if [ -n "$EXISTING" ]; then
             gh api "repos/$REPO/issues/comments/$EXISTING" -X PATCH -f body="$(cat /tmp/comment.md)" 2>/dev/null || \
               gh pr comment "$PR_NUMBER" --body-file /tmp/comment.md

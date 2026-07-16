@@ -133,6 +133,20 @@ if [ "$DEGRADED_COUNT" -ge "$((TOTAL_MODELS - 1))" ]; then
   : > "$WORK/coverage-severe.flag"
 fi
 
+# lens 별 floor — 위 모델별 floor는 "이 모델이 모든 lens에서 죽었는가"만 본다. 반대로 한
+# lens 전체(모든 모델)가 비어도 모델별 row 는 (다른 lens 응답 덕분에) 0 이 아닐 수 있어
+# 위 체크를 통과한다 — 그 lens 는 아무도 리뷰하지 않았는데 매트릭스 상 정상으로 보인다.
+: > "$WORK/degraded-lenses.txt"
+for lens_file in "${LENS_FILES[@]}"; do
+  lens="$(basename "$lens_file" .txt)"
+  lens_count="$(grep -c "/${lens}$" "$RESP" 2>/dev/null)"
+  if [ "${lens_count:-0}" -eq 0 ]; then
+    echo "::warning::lens '$lens' produced zero responses across all models — this lens was not reviewed" >&2
+    echo "$lens" >> "$WORK/degraded-lenses.txt"
+    : > "$WORK/coverage-severe.flag"
+  fi
+done
+
 # skip 원인 노출: 빈 슬롯인데 stderr 가 있으면 stderr 의 끝(실제 에러)을 로그에 찍는다.
 # scrub_secrets 를 거쳐 원시 크리덴셜이 CI 로그로 새는 것을 막는다(record_result 의 [preview]
 # 와 같은 방어선).

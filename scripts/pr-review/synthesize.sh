@@ -113,15 +113,20 @@ run_chair() {  # $1=model → "$OUT" 에 기록. claude 실패해도 || true 로
     < "$WORK/synth-stdin.txt" > "$OUT" 2>"$WORK/chair.err" || true
 }
 
-# 요구사항: 마지막 non-empty 줄이 정확히 VERDICT: PASS 또는 VERDICT: FAIL.
-# tail -n1 대신 awk 로 trailing 빈 줄을 건너뛴다 — trailing blank line 하나로
-# 유효한 응답이 invalid 처리되는 걸 방지. 정규식엔 whitespace 여유를 두지 않는다
-# — gate(pr-review.yml) 가 동일 라인을 공백 없는 정확매칭(^VERDICT: PASS$)으로
-# 다시 검사하므로, 여기서 여유를 주면 chair_valid 는 통과시키고 gate 는 그 원본
-# 파일을 그대로 걸러버리는 validator/gate 불일치가 생긴다.
+# 요구사항: 마지막 non-empty 줄이 정확히 VERDICT: PASS 또는 VERDICT: FAIL, 그리고 본문
+# 전체에 VERDICT: 줄이 정확히 하나. tail -n1 대신 awk 로 trailing 빈 줄을 건너뛴다 —
+# trailing blank line 하나로 유효한 응답이 invalid 처리되는 걸 방지. 정규식엔 whitespace
+# 여유를 두지 않고, verdict_count==1 조건도 gate(pr-review.yml)와 동일하게 요구한다 —
+# 둘 중 하나만 느슨하면 (예: chair_valid 는 last-line만 보고 통과시키는데 gate 는
+# verdict_count>1 로 같은 파일을 차단) validator 가 primary 를 valid 로 판단해 fallback
+# 을 건너뛰고, gate 가 그 결과를 뒤늦게 걸러내는 validator/gate 불일치가 생긴다. 결과는
+# fail-closed(FAIL)라 안전하지만, fallback 모델이 유효한 리뷰를 낼 기회 자체를 잃는다.
 chair_valid() {
   [ -s "$OUT" ] || return 1
-  awk 'NF{last=$0} END{print last}' "$OUT" | grep -qE '^VERDICT: (PASS|FAIL)$'
+  local last verdict_count
+  last="$(awk 'NF{last=$0} END{print last}' "$OUT")"
+  verdict_count="$(grep -c '^VERDICT:' "$OUT" || true)"
+  [[ "$last" =~ ^VERDICT:\ (PASS|FAIL)$ ]] && [ "$verdict_count" = "1" ]
 }
 
 run_chair "$PRIMARY_MODEL"
@@ -147,6 +152,17 @@ fi
 if [ -s "$WORK/degraded-models.txt" ]; then
   DEGRADED="$(tr '\n' ',' < "$WORK/degraded-models.txt" | sed 's/,$//; s/,/, /g')"
   { echo "⚠️ **커버리지 저하**: [$DEGRADED] 모델이 전체 lens 에서 응답 없음(플래그 무효·바이너리 부재·인증 실패 등) — 아래 리뷰는 그 모델 없이 종합됨."
+    echo ""
+    cat "$OUT"
+  } > "$OUT.tmp" && mv "$OUT.tmp" "$OUT"
+fi
+
+# lens 커버리지 붕괴 가시화 — 한 lens 가 모든 모델에서 응답 없이 조용히 빠졌으면
+# (run-panel.sh 의 degraded-lenses.txt), 이미 coverage-severe.flag 로 강제 FAIL 되지만
+# "왜" FAIL 인지 리뷰 본문에서 바로 보이도록 배너를 남긴다.
+if [ -s "$WORK/degraded-lenses.txt" ]; then
+  DEGRADED_LENSES="$(tr '\n' ',' < "$WORK/degraded-lenses.txt" | sed 's/,$//; s/,/, /g')"
+  { echo "🛑 **lens 커버리지 붕괴**: lens [$DEGRADED_LENSES] 를 모든 모델이 응답하지 않아 아무도 리뷰하지 않음."
     echo ""
     cat "$OUT"
   } > "$OUT.tmp" && mv "$OUT.tmp" "$OUT"
