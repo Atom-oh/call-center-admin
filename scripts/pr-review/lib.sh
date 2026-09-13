@@ -29,13 +29,14 @@ record_result() {
   fi
 }
 
-# 자격증명 패턴 스크럽 — 마지막 방어선(last line of defense), 예방이 아님. Kiro 는 이 repo에서
-# read/grep/fs_read 로 base 체크아웃 전체를 읽을 수 있어(BASE CONTEXT 검증 목적, 의도된 동작),
-# diff 인젝션이 절대경로/레포 밖 크리덴셜을 읽게 유도하면 셀 출력에 그 값이 노출될 잔여 위험이
-# 있다. 셀 출력을 체어에 넘기기 전 흔한 크리덴셜 포맷을 정규식으로 치환한다. 패턴은 co-agent 의
+# 자격증명 패턴 스크럽 — 마지막 방어선(last line of defense), 예방이 아님. Kiro 셀은 이제 무툴
+# (`--agent pr-review-notools`, run-panel.sh 참조)이라 파일을 읽을 수 없지만, codex 는 read-only
+# sandbox 로 base 체크아웃을 읽을 수 있고 툴 정책이 다시 바뀔 수도 있어 셀 출력을 체어에 넘기기
+# 전 흔한 크리덴셜 포맷을 정규식으로 치환한다. 패턴은 co-agent 의
 # `consensus_hooks.py::_SECRET_RE`(AWS/GitHub/Slack/OpenAI·Anthropic/Google + generic
-# key=value)를 재사용하고, EKS Pod Identity 토큰(JWT 포맷) 탐지를 추가했다. 절대경로 read 자체를
-# 막지는 못하므로(스크럽은 값이 셀 출력에 실제로 나타난 *뒤*에만 작동) 잔여 위험은 그대로 남는다.
+# key=value)를 재사용하고, EKS Pod Identity 토큰(JWT 포맷) 탐지를 추가했다. 스크럽은 값이 셀
+# 출력에 실제로 나타난 *뒤*에만 작동하므로 예방 계층(무툴 에이전트, persist-credentials:false)을
+# 대체하지 않는다.
 scrub_secrets() {
   # PEM 은 여러 줄에 걸치므로 line-oriented sed 로는 본문을 못 지운다(헤더 줄만 매칭)
   # — awk 상태기계로 BEGIN..END 블록 전체를 마커 한 줄로 치환(첫 스테이지, 구조적 스크럽).
