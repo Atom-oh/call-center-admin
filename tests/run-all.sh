@@ -55,6 +55,83 @@ assert_grep() {
     fi
 }
 
+# assert_eq <desc> <expected> <actual>
+assert_eq() {
+    local desc="$1" expected="$2" actual="$3"
+    TOTAL=$((TOTAL + 1))
+    if [ "$expected" = "$actual" ]; then
+        PASS=$((PASS + 1))
+        echo "ok $TOTAL - $desc"
+    else
+        FAIL=$((FAIL + 1))
+        FAILED_NAMES+=("$desc (expected '$expected', got '$actual')")
+        echo "not ok $TOTAL - $desc (expected '$expected', got '$actual')"
+    fi
+}
+
+# assert_grep_match <desc> <ERE> <string> — a string (not a file) matched with grep -E
+assert_grep_match() {
+    local desc="$1" pattern="$2" text="$3"
+    TOTAL=$((TOTAL + 1))
+    if printf '%s\n' "$text" | grep -qE -- "$pattern"; then
+        PASS=$((PASS + 1))
+        echo "ok $TOTAL - $desc"
+    else
+        FAIL=$((FAIL + 1))
+        FAILED_NAMES+=("$desc (pattern '$pattern' not matched)")
+        echo "not ok $TOTAL - $desc (pattern '$pattern' not matched)"
+    fi
+}
+
+# assert_grep_no_match <desc> <ERE> <string>
+assert_grep_no_match() {
+    local desc="$1" pattern="$2" text="$3"
+    TOTAL=$((TOTAL + 1))
+    if printf '%s\n' "$text" | grep -qE -- "$pattern"; then
+        FAIL=$((FAIL + 1))
+        FAILED_NAMES+=("$desc (pattern '$pattern' unexpectedly matched)")
+        echo "not ok $TOTAL - $desc (pattern '$pattern' unexpectedly matched)"
+    else
+        PASS=$((PASS + 1))
+        echo "ok $TOTAL - $desc"
+    fi
+}
+
+# assert_bash_syntax <desc> <file>
+assert_bash_syntax() {
+    local desc="$1" file="$2"
+    TOTAL=$((TOTAL + 1))
+    if bash -n "$file" 2>/dev/null; then
+        PASS=$((PASS + 1))
+        echo "ok $TOTAL - $desc"
+    else
+        FAIL=$((FAIL + 1))
+        FAILED_NAMES+=("$desc (bash -n failed: $file)")
+        echo "not ok $TOTAL - $desc (bash -n failed: $file)"
+    fi
+}
+
+# assert_json_valid <desc> <file>
+assert_json_valid() {
+    local desc="$1" file="$2"
+    TOTAL=$((TOTAL + 1))
+    if python3 -c 'import json,sys; json.load(open(sys.argv[1]))' "$file" 2>/dev/null; then
+        PASS=$((PASS + 1))
+        echo "ok $TOTAL - $desc"
+    else
+        FAIL=$((FAIL + 1))
+        FAILED_NAMES+=("$desc (invalid JSON: $file)")
+        echo "not ok $TOTAL - $desc (invalid JSON: $file)"
+    fi
+}
+
+# skip <desc> <reason> — TAP "ok ... # SKIP" directive (counts toward TOTAL/PASS, never FAIL)
+skip() {
+    TOTAL=$((TOTAL + 1))
+    PASS=$((PASS + 1))
+    echo "ok $TOTAL - $1 # SKIP $2"
+}
+
 # Only run the assertion suite if invoked directly. If sourced, do not run.
 if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
     echo "# Harness — call-center-admin scaffold tests"

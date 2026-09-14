@@ -16,10 +16,10 @@ PANEL=""
 SCRUB_TMP="$WORK/scrub-cell.tmp"
 while IFS= read -r f; do
   [ -s "$f" ] || continue
-  # 크리덴셜 스크럽(마지막 방어선) — Kiro 는 이 repo에서 base 체크아웃 전체를 read/grep 할 수
-  # 있어(BASE CONTEXT 검증이 의도된 기능), diff 인젝션이 절대경로/레포 밖 크리덴셜을 읽게 유도
-  # 하면 셀 출력에 노출될 잔여 위험이 있다. 캡 적용 전체 스크럽 후 캡을 적용해야 잘린 경계에서
-  # 패턴이 쪼개져 탐지를 피하는 걸 막는다.
+  # 크리덴셜 스크럽(마지막 방어선) — Kiro 셀은 이제 무툴(`--agent pr-review-notools`)이라
+  # 파일을 읽을 수 없지만, codex 는 read-only sandbox 로 base 체크아웃을 읽을 수 있고 향후
+  # 툴 정책이 다시 바뀔 수도 있어 셀 출력의 스크럽은 그대로 유지한다. 캡 적용 전 전체 스크럽
+  # 후 캡을 적용해야 잘린 경계에서 패턴이 쪼개져 탐지를 피하는 걸 막는다.
   scrub_secrets < "$f" > "$SCRUB_TMP"
   CELL="$(head -c "$PANEL_CELL_CAP" "$SCRUB_TMP")"
   SCRUBBED_LEN="$(wc -c < "$SCRUB_TMP")"
@@ -152,6 +152,49 @@ fi
 if [ -s "$WORK/degraded-models.txt" ]; then
   DEGRADED="$(tr '\n' ',' < "$WORK/degraded-models.txt" | sed 's/,$//; s/,/, /g')"
   { echo "⚠️ **커버리지 저하**: [$DEGRADED] 모델이 전체 lens 에서 응답 없음(플래그 무효·바이너리 부재·인증 실패 등) — 아래 리뷰는 그 모델 없이 종합됨."
+    echo ""
+    cat "$OUT"
+  } > "$OUT.tmp" && mv "$OUT.tmp" "$OUT"
+fi
+
+# 고정 프롬프트 사전 검증(run-panel.sh 의 kiro-preflight.flag)이 실패하면 PR diff 를 Kiro 에
+# 보내지 않은 상태로 중단됐다 — "왜 Kiro 셀이 전부 비었는지"를 코멘트에서 바로 읽게 한다.
+if [ -s "$WORK/kiro-preflight.flag" ]; then
+  PREFLIGHT_DETAIL="$(tr '\n' ' ' < "$WORK/kiro-preflight.flag" | sed 's/ *$//')"
+  { echo "🛑 **Kiro 사전 검증 실패**: $PREFLIGHT_DETAIL 도구 차단을 확인하지 못해 Kiro 리뷰를 시작하지 않았습니다. 절차: docs/runbooks/pr-review-panel.md"
+    echo ""
+    cat "$OUT"
+  } > "$OUT.tmp" && mv "$OUT.tmp" "$OUT"
+fi
+
+# Kiro 월간 요청 한도 소진(run-panel.sh 의 kiro-quota.flag) — 위 degraded 배너의 원인 후보
+# 나열 대신 실제 원인을 못박는다. 코드/플래그 문제가 아니라 KIRO_API_KEY 계정 한도이므로
+# 사람이 취할 행동(overage 활성화 또는 키 교체)과 리셋 시점을 코멘트에서 바로 읽을 수 있게.
+if [ -s "$WORK/kiro-quota.flag" ]; then
+  QUOTA_DETAIL="$(tr '\n' ' ' < "$WORK/kiro-quota.flag" | sed 's/ *$//')"
+  { echo "🚫 **Kiro 월간 요청 한도 소진**: KIRO_API_KEY 계정이 MONTHLY_REQUEST_COUNT 한도에 도달해 Kiro 셀이 응답 없음 (\`$QUOTA_DETAIL\`) — kiro-cli headless 플래그 문제가 아님. overage 활성화 또는 \`/demo-platform/actions/AI-key\` 의 KIRO_API_KEY 교체 전까지 매 실행 반복됨. 절차: docs/runbooks/pr-review-panel.md"
+    echo ""
+    cat "$OUT"
+  } > "$OUT.tmp" && mv "$OUT.tmp" "$OUT"
+fi
+
+# Kiro 에이전트 폴백(run-panel.sh 의 kiro-agent-fallback.flag) — 러너의 kiro-cli 가
+# `--agent pr-review-notools` 를 무시하고 툴 있는 기본 에이전트로 실행한 셀이 있었다. 응답은
+# 이미 폐기됐고 coverage-severe 로 강제 FAIL 되지만, "왜 FAIL 인지"를 코멘트에서 바로 읽게 한다.
+if [ -s "$WORK/kiro-agent-fallback.flag" ]; then
+  AGENTFAIL_DETAIL="$(tr '\n' ' ' < "$WORK/kiro-agent-fallback.flag" | sed 's/ *$//')"
+  { echo "🔓 **Kiro 무툴 계약 위반**: kiro-cli 가 \`--agent pr-review-notools\` 를 무시하고 툴 있는 기본 에이전트로 실행함 (\`$AGENTFAIL_DETAIL\`) — 해당 셀 응답은 폐기, 강제 FAIL. 러너 이미지의 kiro-cli 버전/에이전트 스키마 변경 여부 확인 필요(docs/runbooks/pr-review-panel.md)."
+    echo ""
+    cat "$OUT"
+  } > "$OUT.tmp" && mv "$OUT.tmp" "$OUT"
+fi
+
+# Kiro diff truncation 가시화 — 대형 diff 는 run-panel.sh 의 KIRO_DIFF_CAP 을 넘으면 Kiro
+# 셀에 prefix 만 전달된다(argv 커널 한도 회피, 의도된 트레이드오프). truncation 은 VERDICT
+# 를 강제하진 않되(codex 는 여전히 전체 diff 를 봄) 신호 없이 넘기면 "Kiro 셀이 diff 뒷부분은
+# 못 본 채 정상 응답으로 집계됐다"는 사실이 리뷰에서 안 보인다.
+if [ -f "$WORK/kiro-diff-truncated.flag" ]; then
+  { echo "✂️ **Kiro diff truncated**: diff 가 KIRO_DIFF_CAP 을 초과해 Kiro 셀은 앞부분만 리뷰함 — codex 는 전체 diff 를 봤으므로 뒷부분 이슈는 codex 단일 벤더 커버리지."
     echo ""
     cat "$OUT"
   } > "$OUT.tmp" && mv "$OUT.tmp" "$OUT"

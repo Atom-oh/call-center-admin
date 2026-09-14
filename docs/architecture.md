@@ -134,7 +134,7 @@
 ### Operations
 
 - `docs/runbooks/.template.md` — runbook template
-- Authored runbooks: `bedrock-throttling.md`, `hitl-backlog.md`, `prompt-rollback.md`, `pii-mask-failure.md`, `quicksight-setup.md`
+- Authored runbooks: `bedrock-throttling.md`, `hitl-backlog.md`, `prompt-rollback.md`, `pii-mask-failure.md`, `quicksight-setup.md`, `pr-review-panel.md` (AI PR-review Kiro cells: quota / no-tools agent fallback / preflight)
 - Setup guides: `docs/operations/atlantis-setup.md`, `docs/operations/github-actions-setup.md`
 
 ---
@@ -269,5 +269,5 @@
 ### 운영
 
 - `docs/runbooks/.template.md` — 런북 템플릿
-- 작성된 런북: `bedrock-throttling.md`, `hitl-backlog.md`, `prompt-rollback.md`, `pii-mask-failure.md`, `quicksight-setup.md`
+- 작성된 런북: `bedrock-throttling.md`, `hitl-backlog.md`, `prompt-rollback.md`, `pii-mask-failure.md`, `quicksight-setup.md`, `pr-review-panel.md` (AI PR 리뷰 Kiro 셀: 한도 소진 / 무툴 에이전트 폴백 / 사전 검증)
 - 셋업 가이드: `docs/operations/atlantis-setup.md`, `docs/operations/github-actions-setup.md`
