@@ -11,7 +11,7 @@
 
 `AI Code Review` PR 코멘트 상단에 아래 배너 중 하나가 붙고, Actions 로그에 대응하는
 `::error::` 줄이 있을 때. 세 배너 모두 lens×model 매트릭스의 Kiro 절반(kiro-opus /
-kiro-gpt / kiro-glm)이 기여를 멈췄다는 뜻이다. Codex 셀은 계속 리뷰하지만, Kiro 모델이 전부
+kiro-gpt)이 기여를 멈췄다는 뜻이다. Codex 셀은 계속 리뷰하지만, Kiro 모델이 전부
 죽으면 살아남은 벤더가 1개뿐이라 기존 커버리지 게이트가 `VERDICT: FAIL` 을 강제한다.
 
 | 배너 | 플래그 파일 | 의미 |
@@ -132,8 +132,8 @@ specified default` 를 찍고(에이전트 파일 부재, JSON 파싱 실패, �
 ## Verification
 
 - 다음 PR 리뷰 코멘트 상단에 배너가 없고, `_Cells (model/lens):_` 줄에 `kiro-opus/…`,
-  `kiro-gpt/…`, `kiro-glm/…` 셀이 다시 보인다.
-- Actions 로그에 `Kiro preflight passed: kiro-opus / kiro-gpt / kiro-glm (no PR input)` 3줄.
+  `kiro-gpt/…` 셀이 다시 보인다.
+- Actions 로그에 `Kiro preflight passed: kiro-opus / kiro-gpt (no PR input)` 2줄.
 - 로컬: `bash tests/run-all.sh` 의 `tests/structure/test-pr-review-panel.sh` 그룹이 모두 `ok`
   (모델 호출은 전부 스텁 — 실제 크레딧 소모 없음).
 
