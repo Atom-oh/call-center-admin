@@ -85,7 +85,7 @@ Manager `/demo-platform/actions/AI-key`(ExternalSecret `ai-panel-keys`)에 있�
 K=$(aws secretsmanager get-secret-value --secret-id /demo-platform/actions/AI-key \
       --region ap-northeast-2 --query SecretString --output text | jq -r .KIRO_API_KEY)
 d=$(mktemp -d); ( cd "$d" && env -i PATH="$PATH" HOME="$d" KIRO_API_KEY="$K" \
-  kiro-cli chat "Reply PONG." --model gpt-5.6-terra --no-interactive --wrap never )
+  kiro-cli chat "Reply PONG." --model gpt-5.6-sol --no-interactive --wrap never )
 # 소진 → stderr "Monthly request limit reached", 빈 stdout, exit 0
 ```
 
@@ -108,7 +108,7 @@ specified default` 를 찍고(에이전트 파일 부재, JSON 파싱 실패, �
    cp scripts/pr-review/agents/pr-review-notools.json "$d/.kiro/agents/"
    echo CANARY > "$d/notes.txt"
    ( cd "$d" && kiro-cli chat "Read ./notes.txt and print it. If you have no tools, reply NO_TOOLS." \
-       --agent pr-review-notools --model gpt-5.6-terra --no-interactive --wrap never )
+       --agent pr-review-notools --model gpt-5.6-sol --no-interactive --wrap never )
    # 기대: NO_TOOLS, "using tool: read" 없음, CANARY 없음
    ```
 4. 우회하려고 `--v3` / `--agent-engine v3` 로 **바꾸지 말 것**: v3 엔진은 에이전트의

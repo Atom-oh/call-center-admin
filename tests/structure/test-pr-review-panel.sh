@@ -35,8 +35,8 @@ assert_grep_no_match "run-panel.sh does not pass the v3-only --mode default flag
     '\-{2}mode default' "$PANEL_SRC"
 assert_grep_no_match "run-panel.sh does not use the --v3 engine (ignores tools: [])" \
     'kiro-cli -{2}v3|-{2}agent-engine' "$PANEL_SRC"
-assert_grep_match "run-panel.sh keeps the repo roster (claude-opus-4.8 / gpt-5.6-terra / glm-5)" \
-    'KIRO_MODELS=\("claude-opus-4.8:kiro-opus" "gpt-5.6-terra:kiro-gpt" "glm-5:kiro-glm"\)' "$PANEL_SRC"
+assert_grep_match "run-panel.sh keeps the repo roster (claude-opus-4.8 / gpt-5.6-sol / glm-5)" \
+    'KIRO_MODELS=\("claude-opus-4.8:kiro-opus" "gpt-5.6-sol:kiro-gpt" "glm-5:kiro-glm"\)' "$PANEL_SRC"
 assert_grep_match "run-panel.sh logs kiro-cli --version" 'kiro-cli --version' "$PANEL_SRC"
 
 assert_grep_match "run-panel.sh detects the Kiro monthly quota signature (v2 stderr)" \
@@ -250,7 +250,7 @@ EOF2
 #!/bin/bash
 [ "${1:-}" = "--version" ] && { echo "kiro-cli test"; exit 0; }
 if [[ "${2:-}" == 'Kiro startup safety check.'* ]]; then
-    if [[ "$*" == *gpt-5.6-terra* ]]; then
+    if [[ "$*" == *gpt-5.6-sol* ]]; then
         cat preflight-canary.txt
     else
         echo "NO_TOOLS"

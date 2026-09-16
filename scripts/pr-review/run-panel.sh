@@ -31,7 +31,7 @@ rm -f "$WORK/coverage-severe.flag" "$WORK/kiro-diff-truncated.flag" "$WORK/kiro-
 T="${PANEL_TIMEOUT:-300}"
 RETRIES="${PANEL_RETRIES:-2}"
 
-KIRO_MODELS=("claude-opus-4.8:kiro-opus" "gpt-5.6-terra:kiro-gpt" "glm-5:kiro-glm")
+KIRO_MODELS=("claude-opus-4.8:kiro-opus" "gpt-5.6-sol:kiro-gpt" "glm-5:kiro-glm")
 # 러너 이미지의 kiro-cli 는 unpinned vendor-latest 라(AWS-Demo-Platform 저장소의
 # docker/actions-runner-claude/Dockerfile 참조) 아래 무툴/한도 시그니처 가정(2.11.1 기준)이 어느
 # 버전에서 깨졌는지 로그에서 추적할 수 있게 버전을 첫 줄에 찍는다.
