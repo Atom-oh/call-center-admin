@@ -1,6 +1,6 @@
 name: AI Code Review
 
-# PR마다 lens×모델 매트릭스 패널(Codex + Kiro x3, L2~L5 각 lens 독립 에이전트)이 리뷰하고
+# PR마다 lens×모델 매트릭스 패널(Codex + Kiro x2, L2~L5 각 lens 독립 에이전트)이 리뷰하고
 # Claude Fable 5 의장(저하 시 Opus 4.8 폴백)이 lens별로 종합해 코멘트로 게시(fail-closed
 # VERDICT). 공유 actions-runner-claude 이미지 사용. AWS-Demo-Platform/awsops 의 lens×model
 # 매트릭스 설계를 포팅. 이전 버전(단일 프롬프트, Kiro 로스터에 kimi-k2.5, Antigravity 언급,
@@ -167,7 +167,7 @@ jobs:
             echo "panel_truncated=1" >> "$GITHUB_ENV"
           fi
 
-      - name: "Run panel + synthesize (lens x model matrix: Codex + Kiro x3 -> Claude chair, 4 models x 4 lenses = 16 cells)"
+      - name: "Run panel + synthesize (lens x model matrix: Codex + Kiro x2 -> Claude chair, 3 models x 4 lenses = 12 cells)"
         env:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           PR_TITLE: ${{ github.event.pull_request.title }}
@@ -219,7 +219,7 @@ jobs:
           fi
           {
             echo "$MARKER"
-            echo "## 🤖 AI Code Review (${chair_used:-Claude Fable 5} chair · lens×model matrix: Codex + Kiro x3, L2-L5)"
+            echo "## 🤖 AI Code Review (${chair_used:-Claude Fable 5} chair · lens×model matrix: Codex + Kiro x2, L2-L5)"
             echo ""
             echo "_Cells (model/lens): ${panel_responded:-solo}_"
             [ "${panel_truncated:-0}" = "1" ] && echo "_⚠️ diff truncated to first 3000 lines — review is partial._"

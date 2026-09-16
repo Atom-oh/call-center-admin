@@ -31,7 +31,10 @@ rm -f "$WORK/coverage-severe.flag" "$WORK/kiro-diff-truncated.flag" "$WORK/kiro-
 T="${PANEL_TIMEOUT:-300}"
 RETRIES="${PANEL_RETRIES:-2}"
 
-KIRO_MODELS=("claude-opus-4.8:kiro-opus" "gpt-5.6-sol:kiro-gpt" "glm-5:kiro-glm")
+# glm-5(kiro-glm) 는 로스터에서 제외 — AWS-Demo-Platform 저장소의 PR#88 리뷰에서 이 모델만
+# 4건의 오탐을 냈다(AWS-Demo-Platform 저장소의 ADR-015). 되살릴 때는 오탐률을 먼저 재측정할 것.
+# claude-opus-4.8 → claude-opus-5, gpt-5.6-terra → gpt-5.6-sol 로 다른 러너 repo 와 정렬(2026-09-16).
+KIRO_MODELS=("claude-opus-5:kiro-opus" "gpt-5.6-sol:kiro-gpt")
 # 러너 이미지의 kiro-cli 는 unpinned vendor-latest 라(AWS-Demo-Platform 저장소의
 # docker/actions-runner-claude/Dockerfile 참조) 아래 무툴/한도 시그니처 가정(2.11.1 기준)이 어느
 # 버전에서 깨졌는지 로그에서 추적할 수 있게 버전을 첫 줄에 찍는다.
@@ -251,7 +254,7 @@ for lens_file in "${LENS_FILES[@]}"; do
         timeout "$T" codex exec -s read-only --skip-git-repo-check "$LENS_PROMPT" ) &
   else echo "[skip] codex/$lens (binary absent)" >&2; : > "$SLOT/codex-$lens.md"; fi
 
-  # Kiro x3 — model:tag 를 한 배열에서 파생(호출/집계 동기화). Kiro's non-interactive
+  # Kiro x2 — model:tag 를 한 배열에서 파생(호출/집계 동기화). Kiro's non-interactive
   # `chat` reads ONLY the prompt arg — it ignores stdin, so diff 는 argv 에 직접 embed(캡됨,
   # 툴 미부여 — 위 KIRO_DIFF_TEXT/`--agent pr-review-notools` 주석 참조). SECURITY data-only
   # guard 는 각 lens 프롬프트($LENS_PROMPT) 자체에 이미 포함되어 있다고 가정(워크플로의 COMMON 블록).
@@ -270,7 +273,7 @@ for lens_file in "${LENS_FILES[@]}"; do
 done
 
 # NOTE: Antigravity(agy) 는 제거됨 — OAuth 인터랙티브 로그인 전용(API 키 인증 모드 없음)
-# 이라 헤드리스 CI 에서 인증 불가. 패널 = Codex + Kiro x3 → Claude 의장.
+# 이라 헤드리스 CI 에서 인증 불가. 패널 = Codex + Kiro x2 → Claude 의장.
 wait
 
 # 결과 집계 (KIRO_MODELS·LENS_FILES 와 동일 소스에서 태그 파생 → 하드코딩 불일치 방지)

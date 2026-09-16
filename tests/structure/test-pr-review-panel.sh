@@ -7,8 +7,8 @@
 # 시그니처 감지가 있어야 원인이 코멘트/로그에 드러난다. 둘 다 조용히 되돌려지는 걸 막는다.
 # 모델 호출은 전부 스텁 — 실제 kiro-cli/codex 는 실행되지 않는다.
 #
-# 이 repo 의 로스터는 Kiro x3(kiro-opus/kiro-gpt/kiro-glm) + codex 라 lens 하나에 4셀,
-# preflight 는 3회다 — 기대값의 셀 수/preflight 횟수는 그 로스터 기준.
+# 이 repo 의 로스터는 Kiro x2(kiro-opus/kiro-gpt) + codex 라 lens 하나에 3셀,
+# preflight 는 2회다 — 기대값의 셀 수/preflight 횟수는 그 로스터 기준.
 PANEL="scripts/pr-review/run-panel.sh"
 SYNTH="scripts/pr-review/synthesize.sh"
 AGENT="scripts/pr-review/agents/pr-review-notools.json"
@@ -35,8 +35,8 @@ assert_grep_no_match "run-panel.sh does not pass the v3-only --mode default flag
     '\-{2}mode default' "$PANEL_SRC"
 assert_grep_no_match "run-panel.sh does not use the --v3 engine (ignores tools: [])" \
     'kiro-cli -{2}v3|-{2}agent-engine' "$PANEL_SRC"
-assert_grep_match "run-panel.sh keeps the repo roster (claude-opus-4.8 / gpt-5.6-sol / glm-5)" \
-    'KIRO_MODELS=\("claude-opus-4.8:kiro-opus" "gpt-5.6-sol:kiro-gpt" "glm-5:kiro-glm"\)' "$PANEL_SRC"
+assert_grep_match "run-panel.sh keeps the repo roster (claude-opus-5 / gpt-5.6-sol; glm-5 dropped)" \
+    'KIRO_MODELS=\("claude-opus-5:kiro-opus" "gpt-5.6-sol:kiro-gpt"\)' "$PANEL_SRC"
 assert_grep_match "run-panel.sh logs kiro-cli --version" 'kiro-cli --version' "$PANEL_SRC"
 
 assert_grep_match "run-panel.sh detects the Kiro monthly quota signature (v2 stderr)" \
@@ -151,13 +151,13 @@ EOF2
     wrap_kiro_stub
     PANEL_OUT=$(PATH="$T_STUB:$PATH" PANEL_TIMEOUT=30 PANEL_RETRIES=3 \
         bash "$PANEL" "$T_STUB/diff.txt" "$T_STUB/lenses" "$T_STUB/work" 2>&1 || true)
-    assert_grep_match "healthy kiro cells are counted (codex + Kiro x3 = 4 cells for one lens)" \
-        'Panel responded \(4 / 4 cells\)' "$PANEL_OUT"
+    assert_grep_match "healthy kiro cells are counted (codex + Kiro x2 = 3 cells for one lens)" \
+        'Panel responded \(3 / 3 cells\)' "$PANEL_OUT"
     # run-all.sh 는 set -uo pipefail 로 source 하므로 매치 없는 ls 가 스위트를 죽인다 — find 로 센다.
     HEALTHY_FLAGS=$(find "$T_STUB/work" -maxdepth 1 -name '*.flag' | wc -l | tr -d ' ')
     assert_eq "healthy run leaves no flags" "0" "$HEALTHY_FLAGS"
     AGENT_COPIES=$(find "$T_STUB/work/kiro-cwd" -path '*/.kiro/agents/pr-review-notools.json' | wc -l | tr -d ' ')
-    assert_eq "agent copied into every Kiro cwd (3 preflight + 3 review cells)" "6" "$AGENT_COPIES"
+    assert_eq "agent copied into every Kiro cwd (2 preflight + 2 review cells)" "4" "$AGENT_COPIES"
 
     # Codex 는 입력 diff 를 stderr 에도 출력한다. Kiro 오류 문자열을 인용하는 정상 리뷰가
     # Kiro 에이전트 폴백/한도로 폐기되면 안 된다(이 스크립트 자신을 고치는 PR 이 그 예).
@@ -170,7 +170,7 @@ EOF2
     PANEL_OUT=$(PATH="$T_STUB:$PATH" PANEL_TIMEOUT=30 PANEL_RETRIES=3 \
         bash "$PANEL" "$T_STUB/diff.txt" "$T_STUB/lenses" "$T_STUB/work" 2>&1 || true)
     assert_grep_match "Codex quoting Kiro errors remains a successful response" \
-        'Panel responded \(4 / 4 cells\)' "$PANEL_OUT"
+        'Panel responded \(3 / 3 cells\)' "$PANEL_OUT"
     QUOTED_FLAGS=$(find "$T_STUB/work" -maxdepth 1 -name '*.flag' | wc -l | tr -d ' ')
     assert_eq "quoted Kiro errors in Codex stderr leave no flags" "0" "$QUOTED_FLAGS"
 
@@ -188,7 +188,7 @@ EOF2
         bash "$PANEL" "$T_STUB/diff.txt" "$T_STUB/lenses" "$T_STUB/work" 2>&1 || true)
     CODEX_ATTEMPTS=$(wc -l < "$T_STUB/codex.attempts" | tr -d ' ')
     assert_eq "Codex retries its own transient failure despite a quoted Kiro quota" "2" "$CODEX_ATTEMPTS"
-    assert_grep_match "Codex retry can restore full coverage" 'Panel responded \(4 / 4 cells\)' "$PANEL_OUT"
+    assert_grep_match "Codex retry can restore full coverage" 'Panel responded \(3 / 3 cells\)' "$PANEL_OUT"
     RETRY_FLAGS=$(find "$T_STUB/work" -maxdepth 1 -name '*.flag' | wc -l | tr -d ' ')
     assert_eq "a recovered Codex retry leaves no Kiro failure flags" "0" "$RETRY_FLAGS"
 
@@ -214,15 +214,15 @@ EOF2
     printf 'diff --git a/x b/x\n+PR_DIFF_MARKER\n' > "$T_STUB/diff.txt"
     PANEL_OUT=$(PATH="$T_STUB:$PATH" PANEL_TIMEOUT=30 PANEL_RETRIES=3 \
         bash "$PANEL" "$T_STUB/diff.txt" "$T_STUB/lenses" "$T_STUB/work" 2>&1 || true)
-    PREFLIGHT_ORDER=$(head -3 "$T_STUB/kiro-cli.events" | tr '\n' ' ')
-    assert_eq "all three model preflights finish before any Kiro review" "preflight preflight preflight " "$PREFLIGHT_ORDER"
+    PREFLIGHT_ORDER=$(head -2 "$T_STUB/kiro-cli.events" | tr '\n' ' ')
+    assert_eq "both model preflights finish before any Kiro review" "preflight preflight " "$PREFLIGHT_ORDER"
     PREFLIGHT_INPUT=$(cat "$T_STUB/kiro-cli.preflight-input" 2>/dev/null || echo "missing")
     assert_eq "preflight stdin contains no PR diff" "" "$PREFLIGHT_INPUT"
     PREFLIGHT_LEAKS=$(find "$T_STUB" -maxdepth 1 -name 'kiro-cli.diff-in-preflight' | wc -l | tr -d ' ')
     assert_eq "preflight prompt contains no PR diff" "0" "$PREFLIGHT_LEAKS"
     REVIEW_DIFF=$(find "$T_STUB" -maxdepth 1 -name 'kiro-cli.diff-in-review' | wc -l | tr -d ' ')
     assert_eq "review cells receive the diff inline in argv (no file path, no stdin)" "1" "$REVIEW_DIFF"
-    assert_grep_match "successful preflight preserves full coverage" 'Panel responded \(4 / 4 cells\)' "$PANEL_OUT"
+    assert_grep_match "successful preflight preserves full coverage" 'Panel responded \(3 / 3 cells\)' "$PANEL_OUT"
 
     # 폴백이 NO_TOOLS 를 찍을 수도 있다 — PR 입력이 나가기 전에 거부돼야 한다.
     cat > "$T_STUB/kiro-cli" <<'EOF2'
@@ -264,7 +264,7 @@ EOF2
         bash "$PANEL" "$T_STUB/diff.txt" "$T_STUB/lenses" "$T_STUB/work" 2>&1 || true)
     PREFLIGHT_REVIEWS=$(find "$T_STUB" -maxdepth 1 -name 'kiro-cli.review-started' | wc -l | tr -d ' ')
     assert_eq "a model reading the canary prevents every Kiro review" "0" "$PREFLIGHT_REVIEWS"
-    assert_grep_match "Codex still reviews when Kiro preflight fails" 'Panel responded \(1 / 4 cells\)' "$PANEL_OUT"
+    assert_grep_match "Codex still reviews when Kiro preflight fails" 'Panel responded \(1 / 3 cells\)' "$PANEL_OUT"
     rm -f "$T_STUB/kiro-cli.review-started"
 
     cat > "$T_STUB/kiro-cli" <<'EOF2'
@@ -335,7 +335,7 @@ EOF2
     mkdir -p "$T_STUB/swork/slot"
     : > "$T_STUB/swork/responded.txt"; echo "codex/L2" >> "$T_STUB/swork/responded.txt"
     echo "no findings" > "$T_STUB/swork/slot/codex-L2.md"
-    printf 'kiro-opus\nkiro-gpt\nkiro-glm\n' > "$T_STUB/swork/degraded-models.txt"
+    printf 'kiro-opus\nkiro-gpt\n' > "$T_STUB/swork/degraded-models.txt"
     : > "$T_STUB/swork/degraded-lenses.txt"
     echo "Monthly request limit reached The limits reset on 10/01." > "$T_STUB/swork/kiro-quota.flag"
     echo "Error: no agent with name pr-review-notools found. Falling back to user specified default" > "$T_STUB/swork/kiro-agent-fallback.flag"
